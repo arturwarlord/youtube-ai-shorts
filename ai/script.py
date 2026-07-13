@@ -1,15 +1,28 @@
 import os
+import re
+
+from dotenv import load_dotenv
 from google import genai
 
 
-GEMINI_KEY = os.getenv(
-    "GEMINI_KEY"
-)
+load_dotenv()
 
 
 client = genai.Client(
-    api_key=GEMINI_KEY
+    api_key=os.getenv("GEMINI_KEY")
 )
+
+
+
+MODELS = [
+
+    "gemini-flash-lite-latest",
+
+    "gemini-2.0-flash",
+
+    "gemini-2.0-flash-lite"
+
+]
 
 
 
@@ -21,102 +34,115 @@ def create_script():
     )
 
 
+
     prompt = """
 
 Ты профессиональный сценарист YouTube Shorts.
 
 Создай вирусный ролик длительностью 60 секунд.
 
-Тематика:
-интересные факты, наука, космос, технологии, история, загадки.
+Тема:
+случайный научный факт, загадка или тайна.
 
-Структура ответа строго такая:
+Правила:
+
+1. Сделай 10 сцен.
+
+2. Каждая сцена:
+- 1-2 предложения текста
+- длительность 5-7 секунд
+
+3. Текст должен удерживать внимание:
+- первая сцена должна иметь сильный хук
+- каждые 5 секунд новая мысль
+- финал должен вызвать комментарии
+
+
+4. SEARCH очень важен.
+
+SEARCH должен содержать только реальные запросы для Pexels.
+
+Запрещено:
+
+- alien hologram
+- futuristic portal
+- abstract concept
+- magic effect
+- impossible objects
+
+
+Используй реальные объекты:
+
+хорошо:
+
+space galaxy stars telescope
+human brain scan
+storm clouds lightning
+ancient ruins
+ocean waves
+animals
+technology
+laboratory
+
+
+Плохие примеры:
+
+question mark hologram
+alien eye floating
+cosmic energy barrier
+
+
+Формат строго:
+
 
 TITLE:
 название
 
 
 SCENE 1:
-TEXT:
-текст озвучки для этой сцены
-
-SEARCH:
-английский запрос для поиска видео Pexels
-
-
-SCENE 2:
-TEXT:
-текст озвучки
-
-SEARCH:
-запрос
-
-
-SCENE 3:
-TEXT:
-текст озвучки
-
-SEARCH:
-запрос
-
-
-Продолжи до SCENE 8.
-
-
-Важные правила:
-
-- каждая сцена 5-8 секунд
-- SEARCH только на английском
-- визуал должен соответствовать тексту
-- не используй общие запросы
-- пиши только готовый сценарий
-
-
-Пример:
-
-SCENE 1:
 
 TEXT:
-Учёные обнаружили, что Вселенная расширяется быстрее.
+текст
 
 SEARCH:
-expanding universe galaxy stars
+реальный запрос для видео
 
 
 SCENE 2:
 
 TEXT:
-Телескопы позволяют увидеть прошлое.
+текст
 
 SEARCH:
-space telescope astronomy
+реальный запрос для видео
 
+
+...
+
+
+SCENE 10:
+
+TEXT:
+текст
+
+SEARCH:
+реальный запрос для видео
+
+
+Не добавляй ничего кроме формата.
 
 """
 
 
-
-    models = [
-
-        "gemini-flash-lite-latest",
-
-        "gemini-2.5-flash",
-
-        "gemini-flash-latest"
-
-    ]
+    response = None
 
 
-
-    for model in models:
-
+    for model in MODELS:
 
         try:
 
-
             print(
-                "Пробуем модель:",
-                model
+                f"Пробуем модель: {model}"
             )
 
 
@@ -129,21 +155,138 @@ space telescope astronomy
             )
 
 
-            return response.text
-
+            break
 
 
         except Exception as e:
 
-
             print(
-                "Ошибка модели",
-                model,
-                e
+                f"Ошибка модели {model}: {e}"
             )
 
 
 
-    raise Exception(
-        "Все модели Gemini недоступны"
+    if response is None:
+
+        raise Exception(
+            "Все модели недоступны"
+        )
+
+
+
+    text = response.text
+
+
+
+    print(
+        "\n📄 Получен сценарий:\n"
     )
+
+    print(text)
+
+
+
+    return parse_script(
+        text
+    )
+
+
+
+
+
+def parse_script(text):
+
+
+    scenes=[]
+
+
+    blocks = re.split(
+        r"SCENE\s+\d+:",
+        text
+    )
+
+
+
+    for block in blocks[1:]:
+
+
+        text_match = re.search(
+
+            r"TEXT:\s*(.*?)\s*SEARCH:",
+
+            block,
+
+            re.S
+
+        )
+
+
+        search_match = re.search(
+
+            r"SEARCH:\s*(.*)",
+
+            block,
+
+            re.S
+
+        )
+
+
+
+        if text_match and search_match:
+
+
+            scene = {
+
+
+                "text":
+                text_match.group(1)
+                .strip(),
+
+
+                "search":
+                search_match.group(1)
+                .strip()
+
+            }
+
+
+            scenes.append(
+                scene
+            )
+
+
+
+    print(
+        "\n🧩 Разбор сцен..."
+    )
+
+
+    print(
+        f"Найдено сцен: {len(scenes)}"
+    )
+
+
+
+    for i,s in enumerate(
+        scenes,
+        1
+    ):
+
+        print(
+            f"\nСцена {i}"
+        )
+
+        print(
+            "Текст:",
+            s["text"]
+        )
+
+        print(
+            "Поиск:",
+            s["search"]
+        )
+
+
+
+    return scenes
