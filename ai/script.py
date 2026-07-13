@@ -9,34 +9,12 @@ client = genai.Client(
 
 def create_script():
 
-    prompt = """
-Создай сценарий YouTube Shorts.
+    print("Проверяем доступные модели...")
 
-Тема:
-интересные факты.
+    models = client.models.list()
 
-Формат:
-
-TITLE:
-название
-
-TEXT:
-текст диктора на 45 секунд
-
-SEARCH:
-ключевые слова для поиска видео
-
-DESCRIPTION:
-описание
-
-Пиши на русском языке.
-"""
+    for model in models:
+        print(model.name)
 
 
-    response = client.models.generate_content(
-        model="gemini-1.5-flash",
-        contents=prompt
-    )
-
-
-    return response.text
+    return "test"
