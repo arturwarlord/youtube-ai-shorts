@@ -3,3 +3,6 @@ requests
 edge-tts
 moviepy
 python-dotenv
+pydub
+moviepy
+imageio-ffmpeg
