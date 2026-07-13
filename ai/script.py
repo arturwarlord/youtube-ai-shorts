@@ -10,39 +10,63 @@ client = genai.Client(
 def create_script():
 
     prompt = """
-Ты профессиональный сценарист YouTube Shorts.
-
-Создай один вирусный ролик длительностью 45-60 секунд.
+Создай сценарий YouTube Shorts.
 
 Тематика:
-интересные факты, наука, история, загадки.
+интересные факты, история, наука, загадки.
 
-Ответ строго в формате:
+Формат:
 
 TITLE:
-(название ролика)
+Название ролика
 
 TEXT:
-(текст диктора, примерно 120-150 слов)
+Текст диктора 45-60 секунд.
 
 SEARCH:
-(3-5 английских слов для поиска видео на Pexels)
+Ключевые слова на английском для поиска видео.
 
 DESCRIPTION:
-(описание для YouTube)
+Описание ролика.
 
-Правила:
-- пиши на русском языке
-- первые 3 секунды должны цеплять внимание
-- без приветствий
-- без лишней воды
+Требования:
+- русский язык
+- сильное начало первые 3 секунды
+- без приветствия
+- стиль как у вирусных Shorts
 """
 
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
-        contents=prompt
+    models = [
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-flash-lite-latest"
+    ]
+
+
+    for model in models:
+
+        try:
+
+            print("Пробуем модель:", model)
+
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt
+            )
+
+            return response.text
+
+
+        except Exception as e:
+
+            print(
+                "Ошибка модели",
+                model,
+                e
+            )
+
+
+    raise Exception(
+        "Нет доступных Gemini моделей"
     )
-
-
-    return response.text
