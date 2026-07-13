@@ -1,6 +1,7 @@
 import os
 import asyncio
 import requests
+import random
 import edge_tts
 
 from dotenv import load_dotenv
@@ -24,15 +25,8 @@ OUTPUT_DIR = "output"
 TEMP_DIR = "temp"
 
 
-os.makedirs(
-    OUTPUT_DIR,
-    exist_ok=True
-)
-
-os.makedirs(
-    TEMP_DIR,
-    exist_ok=True
-)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 WIDTH = 1080
@@ -41,44 +35,33 @@ HEIGHT = 1920
 
 
 # ==========================
-# CREATE VOICE
+# VOICE
 # ==========================
 
 async def create_voice(text, filename):
 
     if isinstance(text, list):
-
-        text = " ".join(
-            text
-        )
-
+        text = " ".join(text)
 
     voice = edge_tts.Communicate(
         text=text,
         voice="ru-RU-DmitryNeural"
     )
 
-
-    await voice.save(
-        filename
-    )
+    await voice.save(filename)
 
 
 
 # ==========================
-# PEXELS SEARCH
+# SEARCH PEXELS
 # ==========================
 
 def search_video(query, index):
 
-    print(
-        f"🔎 Поиск: {query}"
-    )
+    print(f"🔎 Поиск: {query}")
 
 
-    url = (
-        "https://api.pexels.com/videos/search"
-    )
+    url = "https://api.pexels.com/videos/search"
 
 
     headers = {
@@ -90,7 +73,7 @@ def search_video(query, index):
 
         "query": query,
 
-        "per_page": 10,
+        "per_page": 15,
 
         "orientation": "portrait"
 
@@ -109,22 +92,35 @@ def search_video(query, index):
 
 
     if not data.get("videos"):
-
         raise Exception(
             f"Видео не найдено: {query}"
         )
 
 
-    video = data["videos"][0]
+    videos = data["videos"]
+
+
+    video = random.choice(
+        videos[:10]
+    )
 
 
     files = video["video_files"]
 
 
+    files = [
+        f for f in files
+        if f.get("width",0) >= 720
+    ]
+
+
+    if not files:
+        files = video["video_files"]
+
+
     file = max(
         files,
-        key=lambda x:
-        x.get("width", 0)
+        key=lambda x:x.get("width",0)
     )
 
 
@@ -133,29 +129,22 @@ def search_video(query, index):
 
 
     filename = (
-        f"{TEMP_DIR}/scene_{index}.mp4"
+        f"{TEMP_DIR}/clip_{index}.mp4"
     )
 
 
-    video_data = requests.get(
+    data = requests.get(
         link,
         timeout=60
     ).content
 
 
-
-    with open(
-        filename,
-        "wb"
-    ) as f:
-
-        f.write(
-            video_data
-        )
+    with open(filename,"wb") as f:
+        f.write(data)
 
 
     print(
-        f"⬇️ Загружена сцена {index}"
+        f"⬇️ Загружено видео {index}"
     )
 
 
@@ -164,7 +153,7 @@ def search_video(query, index):
 
 
 # ==========================
-# PREPARE VIDEO
+# PREPARE CLIP
 # ==========================
 
 def prepare_clip(
@@ -172,12 +161,10 @@ def prepare_clip(
     duration
 ):
 
-    clip = VideoFileClip(
-        filename
-    )
+
+    clip = VideoFileClip(filename)
 
 
-    # вертикальный формат
 
     clip = clip.resized(
         height=HEIGHT
@@ -191,14 +178,30 @@ def prepare_clip(
         )
 
 
+
     clip = Crop(
         width=WIDTH,
         height=HEIGHT,
-        x_center=clip.w / 2,
-        y_center=clip.h / 2
+        x_center=clip.w/2,
+        y_center=clip.h/2
     ).apply(
         clip
     )
+
+
+
+    # немного движения камеры
+
+    try:
+
+        clip = clip.resized(
+            lambda t:
+            1 + (0.02*t)
+        )
+
+    except:
+
+        pass
 
 
 
@@ -207,7 +210,6 @@ def prepare_clip(
         clip = clip.with_duration(
             duration
         )
-
 
     else:
 
@@ -222,7 +224,7 @@ def prepare_clip(
 
 
 # ==========================
-# MAIN VIDEO
+# CREATE VIDEO
 # ==========================
 
 def create_video(
@@ -241,8 +243,8 @@ def create_video(
 
 
     texts = [
-        scene["text"]
-        for scene in scenes
+        s["text"]
+        for s in scenes
     ]
 
 
@@ -254,15 +256,12 @@ def create_video(
     )
 
 
-
     audio = AudioFileClip(
         voice_file
     )
 
 
-    total_duration = (
-        audio.duration
-    )
+    total_duration = audio.duration
 
 
     print(
@@ -271,14 +270,18 @@ def create_video(
 
 
 
-    scene_duration = (
-        total_duration /
-        len(scenes)
+    # делаем больше кадров
+
+    amount = len(scenes) * 2
+
+
+    clip_duration = (
+        total_duration / amount
     )
 
 
 
-    clips = []
+    clips=[]
 
 
     print(
@@ -287,27 +290,33 @@ def create_video(
 
 
 
-    for index, scene in enumerate(
-        scenes,
-        start=1
-    ):
+    counter=1
 
 
-        video_file = search_video(
-            scene["search"],
-            index
-        )
+    for scene in scenes:
 
 
-        clip = prepare_clip(
-            video_file,
-            scene_duration
-        )
+        for part in range(2):
 
 
-        clips.append(
-            clip
-        )
+            video_file = search_video(
+                scene["search"],
+                counter
+            )
+
+
+            clip = prepare_clip(
+                video_file,
+                clip_duration
+            )
+
+
+            clips.append(
+                clip
+            )
+
+
+            counter += 1
 
 
 
@@ -328,7 +337,6 @@ def create_video(
     )
 
 
-
     output = (
         f"{OUTPUT_DIR}/short.mp4"
     )
@@ -337,6 +345,7 @@ def create_video(
     print(
         "💾 Рендер"
     )
+
 
 
     final.write_videofile(
@@ -354,6 +363,7 @@ def create_video(
         threads=2
 
     )
+
 
 
     print(
