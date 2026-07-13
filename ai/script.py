@@ -10,7 +10,7 @@ genai.configure(
 def create_script():
 
     model = genai.GenerativeModel(
-        "gemini-2.0-flash"
+    "gemini-1.5-flash"
     )
 
 
