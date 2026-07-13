@@ -1,18 +1,13 @@
 import os
-import google.generativeai as genai
+from google import genai
 
 
-genai.configure(
+client = genai.Client(
     api_key=os.getenv("GEMINI_KEY")
 )
 
 
 def create_script():
-
-    model = genai.GenerativeModel(
-    "gemini-1.5-flash"
-    )
-
 
     prompt = """
 Создай сценарий YouTube Shorts.
@@ -29,15 +24,19 @@ TEXT:
 текст диктора на 45 секунд
 
 SEARCH:
-3 слова для поиска видео на Pexels
+ключевые слова для поиска видео
 
 DESCRIPTION:
-описание ролика
+описание
 
+Пиши на русском языке.
 """
 
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt
+    )
 
 
     return response.text
