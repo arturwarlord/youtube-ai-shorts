@@ -12,9 +12,7 @@ from moviepy import (
 
 PEXELS_KEY = os.getenv("PEXELS_KEY")
 
-
 OUTPUT = "output"
-
 
 os.makedirs(
     OUTPUT,
@@ -23,7 +21,7 @@ os.makedirs(
 
 
 # ==========================
-# AI VOICE
+# VOICE GENERATION
 # ==========================
 
 async def create_voice(text):
@@ -46,10 +44,9 @@ async def create_voice(text):
 def search_videos(query):
 
     print(
-        "🔎 Ищем видео:",
+        "🔎 Поиск:",
         query
     )
-
 
     headers = {
         "Authorization": PEXELS_KEY
@@ -65,7 +62,7 @@ def search_videos(query):
 
         "query": query,
 
-        "per_page": 10,
+        "per_page": 15,
 
         "orientation": "portrait"
 
@@ -79,10 +76,14 @@ def search_videos(query):
     )
 
 
-    data = response.json()
+    if response.status_code != 200:
+
+        raise Exception(
+            response.text
+        )
 
 
-    return data.get(
+    return response.json().get(
         "videos",
         []
     )
@@ -90,7 +91,7 @@ def search_videos(query):
 
 
 # ==========================
-# DOWNLOAD CLIPS
+# DOWNLOAD VIDEOS
 # ==========================
 
 def download_clips(videos):
@@ -98,32 +99,68 @@ def download_clips(videos):
     files = []
 
 
-    for index, video in enumerate(videos[:6]):
+    for index, video in enumerate(videos):
+
+
+        if len(files) >= 12:
+
+            break
+
 
 
         print(
-            f"⬇️ Видео {index+1}/6"
+            f"⬇️ Загружаем сцену {len(files)+1}/12"
         )
 
 
-        candidates = (
-            video["video_files"]
+        candidates = video.get(
+            "video_files",
+            []
         )
 
 
-        # выбираем лучшее подходящее видео
+        # только вертикальные видео
 
-        file = sorted(
-            candidates,
-            key=lambda x: x.get(
-                "width",
+        candidates = [
+
+            x for x in candidates
+
+            if x.get(
+                "height",
                 0
-            ),
+            ) >= 1000
+
+        ]
+
+
+
+        if not candidates:
+
+            continue
+
+
+
+        # самое качественное
+
+        selected = sorted(
+
+            candidates,
+
+            key=lambda x:
+
+                x.get(
+                    "height",
+                    0
+                ),
+
             reverse=True
+
         )[0]
 
 
-        link = file["link"]
+
+        link = selected["link"]
+
 
 
         content = requests.get(
@@ -133,20 +170,31 @@ def download_clips(videos):
 
 
         filename = (
-            f"{OUTPUT}/clip_{index}.mp4"
+            f"{OUTPUT}/clip_{len(files)}.mp4"
         )
+
 
 
         with open(
             filename,
             "wb"
-        ) as f:
+        ) as file:
 
-            f.write(content)
+            file.write(
+                content
+            )
 
 
         files.append(
             filename
+        )
+
+
+
+    if not files:
+
+        raise Exception(
+            "Не удалось скачать видео"
         )
 
 
@@ -155,7 +203,72 @@ def download_clips(videos):
 
 
 # ==========================
-# VIDEO BUILD
+# PREPARE SCENES
+# ==========================
+
+def prepare_scenes(files):
+
+    scenes = []
+
+
+    for file in files:
+
+
+        try:
+
+            clip = VideoFileClip(
+                file
+            )
+
+
+            clip = clip.with_fps(
+                30
+            )
+
+
+            clip = clip.resized(
+                height=1920
+            )
+
+
+            duration = min(
+                5,
+                clip.duration
+            )
+
+
+            if duration > 2:
+
+
+                clip = clip.subclipped(
+
+                    0,
+
+                    duration
+
+                )
+
+
+                scenes.append(
+                    clip
+                )
+
+
+        except Exception as e:
+
+            print(
+                "Ошибка клипа:",
+                e
+            )
+
+
+
+    return scenes
+
+
+
+# ==========================
+# MAIN VIDEO CREATION
 # ==========================
 
 def create_video(script):
@@ -166,18 +279,29 @@ def create_video(script):
     )
 
 
+
     try:
 
         text = (
+
             script
-            .split("TEXT:")[1]
-            .split("SEARCH:")[0]
+
+            .split(
+                "TEXT:"
+            )[1]
+
+            .split(
+                "SEARCH:"
+            )[0]
+
         )
+
 
     except:
 
 
         text = script
+
 
 
 
@@ -187,21 +311,32 @@ def create_video(script):
 
 
 
-    print(
-        "🎥 Поиск сцен"
+    audio = AudioFileClip(
+        f"{OUTPUT}/voice.mp3"
     )
+
+
+
+    print(
+        "⏱ Длина голоса:",
+        round(
+            audio.duration,
+            2
+        ),
+        "сек"
+    )
+
+
+
+    print(
+        "🎥 Поиск видео"
+    )
+
 
 
     videos = search_videos(
-        "space science technology"
+        "science space technology"
     )
-
-
-    if not videos:
-
-        raise Exception(
-            "Pexels не нашел видео"
-        )
 
 
 
@@ -216,85 +351,73 @@ def create_video(script):
     )
 
 
-    scenes = []
+
+    scenes = prepare_scenes(
+        files
+    )
 
 
 
-    for file in files:
+    if not scenes:
 
-
-        clip = VideoFileClip(
-            file
+        raise Exception(
+            "Нет подготовленных сцен"
         )
 
 
-        # фиксируем FPS
 
-        clip = clip.with_fps(
-            30
+    # расширяем сцены до длины голоса
+
+    total = sum(
+        x.duration
+        for x in scenes
+    )
+
+
+
+    while total < audio.duration:
+
+
+        print(
+            "➕ Добавляем сцены"
         )
 
 
-        # вертикальный формат
-
-        clip = clip.resized(
-            height=1920
+        scenes.extend(
+            scenes[:3]
         )
 
 
-        # обрезаем лишнее
-
-        duration = min(
-            6,
-            clip.duration
-        )
-
-
-        clip = clip.subclipped(
-            0,
-            duration
-        )
-
-
-        scenes.append(
-            clip
+        total = sum(
+            x.duration
+            for x in scenes
         )
 
 
 
     print(
-        "🔗 Склейка сцен"
+        "🔗 Склейка видео"
     )
 
 
     video = concatenate_videoclips(
+
         scenes,
+
         method="compose"
+
     )
 
-
-
-    print(
-        "🎧 Добавляем голос"
-    )
-
-
-    audio = AudioFileClip(
-        f"{OUTPUT}/voice.mp3"
-    )
-
-
-
-    duration = min(
-        video.duration,
-        audio.duration
-    )
 
 
     video = video.subclipped(
+
         0,
-        duration
+
+        audio.duration
+
     )
+
 
 
     video = video.with_audio(
@@ -306,6 +429,7 @@ def create_video(script):
     print(
         "💾 Рендер"
     )
+
 
 
     video.write_videofile(
