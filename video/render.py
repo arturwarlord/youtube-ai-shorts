@@ -3,6 +3,8 @@ import asyncio
 import requests
 import edge_tts
 
+from dotenv import load_dotenv
+
 from moviepy import (
     VideoFileClip,
     AudioFileClip,
@@ -10,8 +12,6 @@ from moviepy import (
 )
 
 from moviepy.video.fx import Crop
-
-from dotenv import load_dotenv
 
 
 load_dotenv()
@@ -21,7 +21,6 @@ PEXELS_KEY = os.getenv("PEXELS_KEY")
 
 
 OUTPUT_DIR = "output"
-
 TEMP_DIR = "temp"
 
 
@@ -41,20 +40,16 @@ HEIGHT = 1920
 
 
 
-# -------------------------
-# VOICE
-# -------------------------
+# ==========================
+# CREATE VOICE
+# ==========================
 
-async def create_voice(
-    text,
-    filename
-):
+async def create_voice(text, filename):
 
     if isinstance(text, list):
 
         text = " ".join(
-            scene["text"]
-            for scene in text
+            text
         )
 
 
@@ -70,14 +65,11 @@ async def create_voice(
 
 
 
-# -------------------------
+# ==========================
 # PEXELS SEARCH
-# -------------------------
+# ==========================
 
-def search_video(
-    query,
-    index
-):
+def search_video(query, index):
 
     print(
         f"🔎 Поиск: {query}"
@@ -90,10 +82,7 @@ def search_video(
 
 
     headers = {
-
-        "Authorization":
-        PEXELS_KEY
-
+        "Authorization": PEXELS_KEY
     }
 
 
@@ -103,26 +92,23 @@ def search_video(
 
         "per_page": 10,
 
-        "orientation":
-        "portrait"
+        "orientation": "portrait"
 
     }
 
 
-    r = requests.get(
+    response = requests.get(
         url,
         headers=headers,
-        params=params
+        params=params,
+        timeout=30
     )
 
 
-    data = r.json()
+    data = response.json()
 
 
-
-    if not data.get(
-        "videos"
-    ):
+    if not data.get("videos"):
 
         raise Exception(
             f"Видео не найдено: {query}"
@@ -135,14 +121,14 @@ def search_video(
     files = video["video_files"]
 
 
-    best = max(
+    file = max(
         files,
         key=lambda x:
-        x.get("width",0)
+        x.get("width", 0)
     )
 
 
-    link = best["link"]
+    link = file["link"]
 
 
 
@@ -151,9 +137,9 @@ def search_video(
     )
 
 
-
     video_data = requests.get(
-        link
+        link,
+        timeout=60
     ).content
 
 
@@ -177,51 +163,55 @@ def search_video(
 
 
 
-# -------------------------
-# VIDEO PREPARE
-# -------------------------
+# ==========================
+# PREPARE VIDEO
+# ==========================
 
 def prepare_clip(
     filename,
     duration
 ):
 
-
     clip = VideoFileClip(
         filename
     )
 
 
-    clip = clip.resize(
+    # вертикальный формат
+
+    clip = clip.resized(
         height=HEIGHT
     )
 
 
     if clip.w < WIDTH:
 
-        clip = clip.resize(
+        clip = clip.resized(
             width=WIDTH
         )
 
 
     clip = Crop(
-    width=WIDTH,
-    height=HEIGHT,
-    x_center=clip.w / 2,
-    y_center=clip.h / 2
-    ).apply(clip)
+        width=WIDTH,
+        height=HEIGHT,
+        x_center=clip.w / 2,
+        y_center=clip.h / 2
+    ).apply(
+        clip
+    )
+
 
 
     if clip.duration < duration:
 
-        clip = clip.loop(
-            duration=duration
+        clip = clip.with_duration(
+            duration
         )
 
 
     else:
 
-        clip = clip.subclip(
+        clip = clip.subclipped(
             0,
             duration
         )
@@ -231,18 +221,13 @@ def prepare_clip(
 
 
 
-# -------------------------
-# MAIN RENDER
-# -------------------------
+# ==========================
+# MAIN VIDEO
+# ==========================
 
 def create_video(
     scenes
 ):
-
-
-    voice_file = (
-        f"{TEMP_DIR}/voice.mp3"
-    )
 
 
     print(
@@ -250,16 +235,20 @@ def create_video(
     )
 
 
-    full_text = [
+    voice_file = (
+        f"{TEMP_DIR}/voice.mp3"
+    )
+
+
+    texts = [
         scene["text"]
         for scene in scenes
     ]
 
 
-
     asyncio.run(
         create_voice(
-            full_text,
+            texts,
             voice_file
         )
     )
@@ -271,19 +260,19 @@ def create_video(
     )
 
 
-    total_time = (
+    total_duration = (
         audio.duration
     )
 
 
     print(
-        f"⏱ Длина голоса: {total_time:.2f} сек"
+        f"⏱ Длина голоса: {total_duration:.2f} сек"
     )
 
 
 
-    scene_time = (
-        total_time /
+    scene_duration = (
+        total_duration /
         len(scenes)
     )
 
@@ -292,30 +281,27 @@ def create_video(
     clips = []
 
 
-
     print(
         "🎥 Поиск видео"
     )
 
 
-    for i, scene in enumerate(
+
+    for index, scene in enumerate(
         scenes,
         start=1
     ):
 
 
-        query = scene["search"]
-
-
         video_file = search_video(
-            query,
-            i
+            scene["search"],
+            index
         )
 
 
         clip = prepare_clip(
             video_file,
-            scene_time
+            scene_duration
         )
 
 
@@ -337,7 +323,7 @@ def create_video(
 
 
 
-    final = final.set_audio(
+    final = final.with_audio(
         audio
     )
 
@@ -346,7 +332,6 @@ def create_video(
     output = (
         f"{OUTPUT_DIR}/short.mp4"
     )
-
 
 
     print(
