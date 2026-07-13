@@ -1,5 +1,4 @@
 import os
-import re
 
 from dotenv import load_dotenv
 from google import genai
@@ -34,68 +33,48 @@ def create_script():
     )
 
 
-
     prompt = """
 
 Ты профессиональный сценарист YouTube Shorts.
 
-Создай вирусный ролик длительностью 60 секунд.
+Создай научный ролик длительностью около 60 секунд.
 
-Тема:
-случайный научный факт, загадка или тайна.
 
 Правила:
 
-1. Сделай 10 сцен.
-
-2. Каждая сцена:
-- 1-2 предложения текста
-- длительность 5-7 секунд
-
-3. Текст должен удерживать внимание:
-- первая сцена должна иметь сильный хук
-- каждые 5 секунд новая мысль
-- финал должен вызвать комментарии
+- ровно 10 сцен
+- каждая сцена 5-7 секунд
+- первая сцена должна быть мощным хуком
+- последняя сцена должна вызывать комментарии
 
 
-4. SEARCH очень важен.
-
-SEARCH должен содержать только реальные запросы для Pexels.
-
-Запрещено:
-
-- alien hologram
-- futuristic portal
-- abstract concept
-- magic effect
-- impossible objects
+SEARCH должен быть только для Pexels.
 
 
-Используй реальные объекты:
+Используй реальные запросы:
 
-хорошо:
+Хорошо:
 
 space galaxy stars telescope
-human brain scan
-storm clouds lightning
-ancient ruins
-ocean waves
-animals
-technology
-laboratory
+scientist laboratory computer
+brain neurons animation
+ocean waves storm
+animals nature documentary
 
 
-Плохие примеры:
+Плохо:
 
-question mark hologram
-alien eye floating
-cosmic energy barrier
+alien hologram
+magic portal
+abstract energy
+future technology concept
 
 
 Формат строго:
 
 
 TITLE:
+
 название
 
 
@@ -105,7 +84,7 @@ TEXT:
 текст
 
 SEARCH:
-реальный запрос для видео
+запрос
 
 
 SCENE 2:
@@ -114,7 +93,7 @@ TEXT:
 текст
 
 SEARCH:
-реальный запрос для видео
+запрос
 
 
 ...
@@ -126,18 +105,15 @@ TEXT:
 текст
 
 SEARCH:
-реальный запрос для видео
+запрос
 
 
-Не добавляй ничего кроме формата.
-
+Не добавляй пояснений.
 """
 
 
-    response = None
-
-
     for model in MODELS:
+
 
         try:
 
@@ -155,7 +131,20 @@ SEARCH:
             )
 
 
-            break
+            text = response.text
+
+
+            print(
+                "\n📄 Получен сценарий:\n"
+            )
+
+            print(
+                text
+            )
+
+
+            return text
+
 
 
         except Exception as e:
@@ -166,127 +155,6 @@ SEARCH:
 
 
 
-    if response is None:
-
-        raise Exception(
-            "Все модели недоступны"
-        )
-
-
-
-    text = response.text
-
-
-
-    print(
-        "\n📄 Получен сценарий:\n"
+    raise Exception(
+        "Нет доступных моделей"
     )
-
-    print(text)
-
-
-
-    return parse_script(
-        text
-    )
-
-
-
-
-
-def parse_script(text):
-
-
-    scenes=[]
-
-
-    blocks = re.split(
-        r"SCENE\s+\d+:",
-        text
-    )
-
-
-
-    for block in blocks[1:]:
-
-
-        text_match = re.search(
-
-            r"TEXT:\s*(.*?)\s*SEARCH:",
-
-            block,
-
-            re.S
-
-        )
-
-
-        search_match = re.search(
-
-            r"SEARCH:\s*(.*)",
-
-            block,
-
-            re.S
-
-        )
-
-
-
-        if text_match and search_match:
-
-
-            scene = {
-
-
-                "text":
-                text_match.group(1)
-                .strip(),
-
-
-                "search":
-                search_match.group(1)
-                .strip()
-
-            }
-
-
-            scenes.append(
-                scene
-            )
-
-
-
-    print(
-        "\n🧩 Разбор сцен..."
-    )
-
-
-    print(
-        f"Найдено сцен: {len(scenes)}"
-    )
-
-
-
-    for i,s in enumerate(
-        scenes,
-        1
-    ):
-
-        print(
-            f"\nСцена {i}"
-        )
-
-        print(
-            "Текст:",
-            s["text"]
-        )
-
-        print(
-            "Поиск:",
-            s["search"]
-        )
-
-
-
-    return scenes
