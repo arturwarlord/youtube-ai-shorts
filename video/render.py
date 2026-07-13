@@ -139,9 +139,11 @@ def create_video(script):
 
 
     final.write_videofile(
-        "output/short.mp4",
-        fps=30
-    )
+    "output/short.mp4",
+    fps=30,
+    codec="libx264",
+    audio_codec="aac"
+)
 
 
     return "output/short.mp4"
