@@ -3,13 +3,13 @@ import asyncio
 import requests
 import edge_tts
 
-from moviepy.editor import (
+from moviepy import (
     VideoFileClip,
     AudioFileClip,
     concatenate_videoclips
 )
 
-from moviepy.video.fx.all import crop
+from moviepy.video.fx import Crop
 
 from dotenv import load_dotenv
 
@@ -204,17 +204,12 @@ def prepare_clip(
         )
 
 
-    clip = crop(
-        clip,
-
-        width=WIDTH,
-
-        height=HEIGHT,
-
-        x_center=clip.w/2,
-
-        y_center=clip.h/2
-    )
+    clip = Crop(
+    width=WIDTH,
+    height=HEIGHT,
+    x_center=clip.w / 2,
+    y_center=clip.h / 2
+    ).apply(clip)
 
 
     if clip.duration < duration:
