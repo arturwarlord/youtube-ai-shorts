@@ -1,56 +1,87 @@
 import os
-import requests
 import asyncio
+import requests
 import edge_tts
 
-from moviepy import (
+from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
     concatenate_videoclips
 )
 
+from moviepy.video.fx.all import crop
+
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 PEXELS_KEY = os.getenv("PEXELS_KEY")
 
-OUTPUT = "output"
+
+OUTPUT_DIR = "output"
+
+TEMP_DIR = "temp"
+
 
 os.makedirs(
-    OUTPUT,
+    OUTPUT_DIR,
+    exist_ok=True
+)
+
+os.makedirs(
+    TEMP_DIR,
     exist_ok=True
 )
 
 
-# ==========================
-# VOICE GENERATION
-# ==========================
+WIDTH = 1080
+HEIGHT = 1920
 
-async def create_voice(text):
+
+
+# -------------------------
+# VOICE
+# -------------------------
+
+async def create_voice(
+    text,
+    filename
+):
+
+    if isinstance(text, list):
+
+        text = " ".join(
+            scene["text"]
+            for scene in text
+        )
+
 
     voice = edge_tts.Communicate(
-        text,
-        "ru-RU-DmitryNeural"
+        text=text,
+        voice="ru-RU-DmitryNeural"
     )
+
 
     await voice.save(
-        f"{OUTPUT}/voice.mp3"
+        filename
     )
 
 
 
-# ==========================
+# -------------------------
 # PEXELS SEARCH
-# ==========================
+# -------------------------
 
-def search_videos(query):
+def search_video(
+    query,
+    index
+):
 
     print(
-        "🔎 Поиск:",
-        query
+        f"🔎 Поиск: {query}"
     )
-
-    headers = {
-        "Authorization": PEXELS_KEY
-    }
 
 
     url = (
@@ -58,220 +89,165 @@ def search_videos(query):
     )
 
 
-    params = {
+    headers = {
 
-        "query": query,
-
-        "per_page": 15,
-
-        "orientation": "portrait"
+        "Authorization":
+        PEXELS_KEY
 
     }
 
 
-    response = requests.get(
+    params = {
+
+        "query": query,
+
+        "per_page": 10,
+
+        "orientation":
+        "portrait"
+
+    }
+
+
+    r = requests.get(
         url,
         headers=headers,
         params=params
     )
 
 
-    if response.status_code != 200:
+    data = r.json()
+
+
+
+    if not data.get(
+        "videos"
+    ):
 
         raise Exception(
-            response.text
+            f"Видео не найдено: {query}"
         )
 
 
-    return response.json().get(
-        "videos",
-        []
+    video = data["videos"][0]
+
+
+    files = video["video_files"]
+
+
+    best = max(
+        files,
+        key=lambda x:
+        x.get("width",0)
+    )
+
+
+    link = best["link"]
+
+
+
+    filename = (
+        f"{TEMP_DIR}/scene_{index}.mp4"
     )
 
 
 
-# ==========================
-# DOWNLOAD VIDEOS
-# ==========================
-
-def download_clips(videos):
-
-    files = []
-
-
-    for index, video in enumerate(videos):
-
-
-        if len(files) >= 12:
-
-            break
+    video_data = requests.get(
+        link
+    ).content
 
 
 
-        print(
-            f"⬇️ Загружаем сцену {len(files)+1}/12"
+    with open(
+        filename,
+        "wb"
+    ) as f:
+
+        f.write(
+            video_data
         )
 
 
-        candidates = video.get(
-            "video_files",
-            []
+    print(
+        f"⬇️ Загружена сцена {index}"
+    )
+
+
+    return filename
+
+
+
+# -------------------------
+# VIDEO PREPARE
+# -------------------------
+
+def prepare_clip(
+    filename,
+    duration
+):
+
+
+    clip = VideoFileClip(
+        filename
+    )
+
+
+    clip = clip.resize(
+        height=HEIGHT
+    )
+
+
+    if clip.w < WIDTH:
+
+        clip = clip.resize(
+            width=WIDTH
         )
 
 
-        # только вертикальные видео
+    clip = crop(
+        clip,
 
-        candidates = [
+        width=WIDTH,
 
-            x for x in candidates
+        height=HEIGHT,
 
-            if x.get(
-                "height",
-                0
-            ) >= 1000
+        x_center=clip.w/2,
 
-        ]
-
+        y_center=clip.h/2
+    )
 
 
-        if not candidates:
+    if clip.duration < duration:
 
-            continue
-
-
-
-        # самое качественное
-
-        selected = sorted(
-
-            candidates,
-
-            key=lambda x:
-
-                x.get(
-                    "height",
-                    0
-                ),
-
-            reverse=True
-
-        )[0]
-
-
-
-        link = selected["link"]
-
-
-
-        content = requests.get(
-            link
-        ).content
-
-
-
-        filename = (
-            f"{OUTPUT}/clip_{len(files)}.mp4"
+        clip = clip.loop(
+            duration=duration
         )
 
 
+    else:
 
-        with open(
-            filename,
-            "wb"
-        ) as file:
-
-            file.write(
-                content
-            )
-
-
-        files.append(
-            filename
+        clip = clip.subclip(
+            0,
+            duration
         )
 
 
-
-    if not files:
-
-        raise Exception(
-            "Не удалось скачать видео"
-        )
-
-
-    return files
+    return clip
 
 
 
-# ==========================
-# PREPARE SCENES
-# ==========================
+# -------------------------
+# MAIN RENDER
+# -------------------------
 
-def prepare_scenes(files):
-
-    scenes = []
-
-
-    for file in files:
+def create_video(
+    scenes
+):
 
 
-        try:
-
-            clip = VideoFileClip(
-                file
-            )
-
-
-            clip = clip.with_fps(
-                30
-            )
-
-
-            clip = clip.resized(
-                height=1920
-            )
-
-
-            duration = min(
-                5,
-                clip.duration
-            )
-
-
-            if duration > 2:
-
-
-                clip = clip.subclipped(
-
-                    0,
-
-                    duration
-
-                )
-
-
-                scenes.append(
-                    clip
-                )
-
-
-        except Exception as e:
-
-            print(
-                "Ошибка клипа:",
-                e
-            )
-
-
-
-    return scenes
-
-
-
-# ==========================
-# MAIN VIDEO CREATION
-# ==========================
-
-def create_video(script):
+    voice_file = (
+        f"{TEMP_DIR}/voice.mp3"
+    )
 
 
     print(
@@ -279,52 +255,46 @@ def create_video(script):
     )
 
 
-
-    try:
-
-        text = (
-
-            script
-
-            .split(
-                "TEXT:"
-            )[1]
-
-            .split(
-                "SEARCH:"
-            )[0]
-
-        )
-
-
-    except:
-
-
-        text = script
-
+    full_text = [
+        scene["text"]
+        for scene in scenes
+    ]
 
 
 
     asyncio.run(
-        create_voice(text)
+        create_voice(
+            full_text,
+            voice_file
+        )
     )
 
 
 
     audio = AudioFileClip(
-        f"{OUTPUT}/voice.mp3"
+        voice_file
     )
 
+
+    total_time = (
+        audio.duration
+    )
 
 
     print(
-        "⏱ Длина голоса:",
-        round(
-            audio.duration,
-            2
-        ),
-        "сек"
+        f"⏱ Длина голоса: {total_time:.2f} сек"
     )
+
+
+
+    scene_time = (
+        total_time /
+        len(scenes)
+    )
+
+
+
+    clips = []
 
 
 
@@ -333,95 +303,53 @@ def create_video(script):
     )
 
 
-
-    videos = search_videos(
-        "science space technology"
-    )
-
-
-
-    files = download_clips(
-        videos
-    )
-
-
-
-    print(
-        "✂️ Подготовка сцен"
-    )
-
-
-
-    scenes = prepare_scenes(
-        files
-    )
-
-
-
-    if not scenes:
-
-        raise Exception(
-            "Нет подготовленных сцен"
-        )
-
-
-
-    # расширяем сцены до длины голоса
-
-    total = sum(
-        x.duration
-        for x in scenes
-    )
-
-
-
-    while total < audio.duration:
-
-
-        print(
-            "➕ Добавляем сцены"
-        )
-
-
-        scenes.extend(
-            scenes[:3]
-        )
-
-
-        total = sum(
-            x.duration
-            for x in scenes
-        )
-
-
-
-    print(
-        "🔗 Склейка видео"
-    )
-
-
-    video = concatenate_videoclips(
-
+    for i, scene in enumerate(
         scenes,
+        start=1
+    ):
 
+
+        query = scene["search"]
+
+
+        video_file = search_video(
+            query,
+            i
+        )
+
+
+        clip = prepare_clip(
+            video_file,
+            scene_time
+        )
+
+
+        clips.append(
+            clip
+        )
+
+
+
+    print(
+        "✂️ Склейка сцен"
+    )
+
+
+    final = concatenate_videoclips(
+        clips,
         method="compose"
-
     )
 
 
 
-    video = video.subclipped(
-
-        0,
-
-        audio.duration
-
-    )
-
-
-
-    video = video.with_audio(
+    final = final.set_audio(
         audio
+    )
+
+
+
+    output = (
+        f"{OUTPUT_DIR}/short.mp4"
     )
 
 
@@ -431,18 +359,15 @@ def create_video(script):
     )
 
 
+    final.write_videofile(
 
-    video.write_videofile(
-
-        f"{OUTPUT}/short.mp4",
+        output,
 
         fps=30,
 
         codec="libx264",
 
         audio_codec="aac",
-
-        bitrate="5000k",
 
         preset="medium",
 
@@ -451,13 +376,6 @@ def create_video(script):
     )
 
 
-
     print(
-        "✅ Готово:",
-        f"{OUTPUT}/short.mp4"
-    )
-
-
-    return (
-        f"{OUTPUT}/short.mp4"
+        f"✅ Готово: {output}"
     )
