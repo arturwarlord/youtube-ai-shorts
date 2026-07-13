@@ -6,3 +6,5 @@ python-dotenv
 pydub
 moviepy
 imageio-ffmpeg
+Pillow
+numpy
