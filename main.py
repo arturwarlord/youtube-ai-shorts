@@ -1,8 +1,6 @@
-import os
-
 from dotenv import load_dotenv
 
-from ai.generator import generate_script
+from ai.script import create_script
 from ai.parser import parse_scenes
 
 from video.render import create_video
@@ -15,12 +13,27 @@ load_dotenv()
 
 def main():
 
+
     print(
-        "\n🤖 Генерация сценария..."
+        "\n🚀 Запуск AI Shorts генератора\n"
     )
 
 
-    script = generate_script()
+    # ==========================
+    # SCRIPT
+    # ==========================
+
+    script = create_script()
+
+
+
+    # ==========================
+    # PARSE
+    # ==========================
+
+    print(
+        "\n🧩 Разбор сценария..."
+    )
 
 
     scenes = parse_scenes(
@@ -31,18 +44,35 @@ def main():
     if not scenes:
 
         raise Exception(
-            "❌ Сценарий пустой"
+            "❌ Не удалось получить сцены"
         )
 
 
     print(
-        f"✅ Получено сцен: {len(scenes)}\n"
+        f"✅ Найдено сцен: {len(scenes)}\n"
+    )
+
+
+
+    # ==========================
+    # VIDEO
+    # ==========================
+
+    print(
+        "🎬 Создание видео...\n"
     )
 
 
     create_video(
         scenes
     )
+
+
+
+    print(
+        "\n🎉 Работа завершена"
+    )
+
 
 
 
