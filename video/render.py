@@ -12,6 +12,9 @@ from moviepy import (
     concatenate_videoclips
 )
 
+from moviepy import CompositeVideoClip
+from video.subtitles import create_subtitle
+
 from moviepy.video.fx import Crop
 
 
@@ -281,7 +284,8 @@ def create_video(
 
 
 
-    clips=[]
+    clips = []
+    subtitle_clips = []
 
 
     print(
@@ -308,6 +312,18 @@ def create_video(
             clip = prepare_clip(
                 video_file,
                 clip_duration
+            )
+
+            subtitle = create_subtitle(
+                scene["text"],
+                clip_duration
+            )
+            
+            clip = CompositeVideoClip(
+                [
+                    clip,
+                    subtitle
+                ]
             )
 
 
