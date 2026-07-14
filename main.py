@@ -1,36 +1,26 @@
-from ai.script import create_script
+import os
+
+from dotenv import load_dotenv
+
+from ai.generator import generate_script
 from ai.parser import parse_scenes
 
 from video.render import create_video
 
 
 
+load_dotenv()
+
+
+
 def main():
 
-
     print(
-        "🤖 Создание сценария..."
+        "\n🤖 Генерация сценария..."
     )
 
 
-    script = create_script()
-
-
-
-    print(
-        "\n📄 Получен сценарий:\n"
-    )
-
-
-    print(
-        script
-    )
-
-
-
-    print(
-        "\n🧩 Разбор сцен..."
-    )
+    script = generate_script()
 
 
     scenes = parse_scenes(
@@ -38,36 +28,15 @@ def main():
     )
 
 
+    if not scenes:
 
-    print(
-        f"Найдено сцен: {len(scenes)}"
-    )
-
-
-
-    for i, scene in enumerate(
-        scenes,
-        start=1
-    ):
-
-        print(
-            f"\nСцена {i}"
+        raise Exception(
+            "❌ Сценарий пустой"
         )
-
-        print(
-            "Текст:",
-            scene["text"]
-        )
-
-        print(
-            "Поиск:",
-            scene["search"]
-        )
-
 
 
     print(
-        "\n🎬 Создание видео..."
+        f"✅ Получено сцен: {len(scenes)}\n"
     )
 
 
