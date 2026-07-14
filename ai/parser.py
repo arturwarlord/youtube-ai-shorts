@@ -3,54 +3,63 @@ import re
 
 def parse_scenes(script):
 
+    if not isinstance(script, str):
+        return script
+
+
     scenes = []
 
 
     blocks = re.split(
-        r"SCENE \d+:",
+        r"SCENE\s+\d+:",
         script
     )
 
 
     for block in blocks:
 
-
-        if "TEXT:" not in block:
-
+        if not block.strip():
             continue
 
 
-        try:
+        text_match = re.search(
+            r"TEXT:\s*(.*?)\s*SEARCH:",
+            block,
+            re.S
+        )
+
+
+        search_match = re.search(
+            r"SEARCH:\s*(.*)",
+            block,
+            re.S
+        )
+
+
+        if text_match and search_match:
 
             text = (
-                block
-                .split("TEXT:")[1]
-                .split("SEARCH:")[0]
+                text_match
+                .group(1)
                 .strip()
+                .replace("\n", " ")
             )
 
 
             search = (
-                block
-                .split("SEARCH:")[1]
+                search_match
+                .group(1)
                 .strip()
-                .split("\n")[0]
+                .replace("\n", " ")
             )
 
 
-            scenes.append({
-
-                "text": text,
-
-                "search": search
-
-            })
-
-
-        except:
-
-            continue
-
+            scenes.append(
+                {
+                    "text": text,
+                    "search": search
+                }
+            )
 
 
     return scenes
