@@ -3,6 +3,7 @@ import numpy as np
 import textwrap
 
 from moviepy import ImageClip
+from moviepy.video.fx import FadeIn, FadeOut
 
 
 FONT_PATH = "assets/fonts/Montserrat-ExtraBold.ttf"
@@ -21,7 +22,7 @@ FONT_SIZE = 62
 
 TEXT_WIDTH = 26
 
-POSITION_Y = 0.70
+POSITION_Y = 0.63
 
 
 FADE_TIME = 0.35
@@ -179,26 +180,15 @@ def create_subtitle(
 
 
     clip = clip.with_effects(
-        [
-            lambda c:
-            c.with_opacity(
-                lambda t:
-                min(
-                    1,
-                    t / FADE_TIME
-                )
-                if t < FADE_TIME
-
-                else
-
-                min(
-                    1,
-                    (duration-t)/FADE_TIME
-                )
-
-            )
-        ]
-    )
+    [
+        FadeIn(
+            FADE_TIME
+        ),
+        FadeOut(
+            FADE_TIME
+        )
+    ]
+)
 
 
     return clip
