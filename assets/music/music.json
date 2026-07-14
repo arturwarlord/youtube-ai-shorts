@@ -1,1 +1,14 @@
-
+[
+  {
+    "file": "dark.mp3",
+    "genre": "dark",
+    "mood": "mystery",
+    "volume": 0.18
+  },
+  {
+    "file": "science.mp3",
+    "genre": "documentary",
+    "mood": "intense",
+    "volume": 0.15
+  }
+]
