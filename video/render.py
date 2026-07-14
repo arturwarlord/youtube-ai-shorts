@@ -546,19 +546,21 @@ def create_video(
 
     final_audio = add_background_music(
 
-        final.with_audio(audio),
+    audio,
 
-        style=music_style,
+    total_duration,
 
-        volume=0.12
+    style=music_style,
 
-    )
+    volume=0.12
+
+)
 
 
 
     final = final.with_audio(
-        final_audio
-    )
+    final_audio
+)
 
 
 
