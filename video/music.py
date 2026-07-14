@@ -6,17 +6,12 @@ from moviepy import (
 )
 
 
+
 MUSIC_DIR = "assets/music"
 
 
 
-# ==========================
-# LOAD BACKGROUND MUSIC
-# ==========================
-
-def load_music(
-        style="dark"
-):
+def load_music(style="dark"):
 
 
     music_file = (
@@ -31,10 +26,11 @@ def load_music(
         )
 
 
+
     if not os.path.exists(music_file):
 
         print(
-            "⚠ Музыкальный файл не найден"
+            "⚠ Музыка не найдена"
         )
 
         return None
@@ -55,12 +51,9 @@ def load_music(
 
 
 
-# ==========================
-# MIX MUSIC + VOICE
-# ==========================
-
 def add_background_music(
-        video,
+        voice,
+        duration,
         style="dark",
         volume=0.12
 ):
@@ -74,18 +67,16 @@ def add_background_music(
 
     if music is None:
 
-        return video.audio
+        return voice
 
 
 
 
-    # подгоняем длительность
-
-    if music.duration < video.duration:
+    if music.duration < duration:
 
 
         music = music.loop(
-            duration=video.duration
+            duration=duration
         )
 
 
@@ -94,13 +85,11 @@ def add_background_music(
 
         music = music.subclipped(
             0,
-            video.duration
+            duration
         )
 
 
 
-
-    # громкость
 
     music = music.with_volume_scaled(
         volume
@@ -111,7 +100,7 @@ def add_background_music(
 
     return CompositeAudioClip(
         [
-            video.audio,
+            voice,
             music
         ]
     )
