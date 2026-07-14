@@ -1,46 +1,117 @@
-import json
-import random
 import os
+
+from moviepy import (
+    AudioFileClip,
+    CompositeAudioClip
+)
 
 
 MUSIC_DIR = "assets/music"
 
 
-def load_music():
 
-    with open(
-        f"{MUSIC_DIR}/music.json",
-        "r",
-        encoding="utf-8"
-    ) as f:
+# ==========================
+# LOAD BACKGROUND MUSIC
+# ==========================
 
-        return json.load(f)
-
+def load_music(
+        style="dark"
+):
 
 
-def choose_music(mood=None):
+    music_file = (
+        f"{MUSIC_DIR}/{style}.mp3"
+    )
 
-    tracks = load_music()
+
+    if not os.path.exists(music_file):
+
+        music_file = (
+            f"{MUSIC_DIR}/background.mp3"
+        )
 
 
-    if mood:
+    if not os.path.exists(music_file):
 
-        filtered = [
-            x for x in tracks
-            if x["mood"] == mood
+        print(
+            "⚠ Музыкальный файл не найден"
+        )
+
+        return None
+
+
+
+    print(
+        f"🎵 Загружена музыка: {music_file}"
+    )
+
+
+
+    return AudioFileClip(
+        music_file
+    )
+
+
+
+
+
+# ==========================
+# MIX MUSIC + VOICE
+# ==========================
+
+def add_background_music(
+        video,
+        style="dark",
+        volume=0.12
+):
+
+
+    music = load_music(
+        style
+    )
+
+
+
+    if music is None:
+
+        return video.audio
+
+
+
+
+    # подгоняем длительность
+
+    if music.duration < video.duration:
+
+
+        music = music.loop(
+            duration=video.duration
+        )
+
+
+    else:
+
+
+        music = music.subclipped(
+            0,
+            video.duration
+        )
+
+
+
+
+    # громкость
+
+    music = music.with_volume_scaled(
+        volume
+    )
+
+
+
+
+    return CompositeAudioClip(
+        [
+            video.audio,
+            music
         ]
-
-        if filtered:
-            return random.choice(filtered)
-
-
-    return random.choice(tracks)
-
-
-
-def get_music_path(track):
-
-    return os.path.join(
-        MUSIC_DIR,
-        track["file"]
     )
