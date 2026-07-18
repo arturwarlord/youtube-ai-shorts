@@ -243,9 +243,11 @@ def prepare_clip(filename, duration):
     ).apply(
         clip
     )
+# ==========================
+# SPLIT WORDS
+# ==========================
 
-
-    def split_words_by_scenes(words, scenes):
+   def split_words_by_scenes(words, scenes):
 
     total_words = len(words)
 
@@ -270,7 +272,9 @@ def prepare_clip(filename, duration):
             ]
 
 
-        result.append(scene_words)
+        result.append(
+            scene_words
+        )
 
         start += words_per_scene
 
