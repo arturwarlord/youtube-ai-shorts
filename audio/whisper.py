@@ -4,6 +4,13 @@ import whisper
 MODEL = None
 
 
+MODEL_NAME = "base"
+
+
+
+# ==========================
+# LOAD MODEL
+# ==========================
 
 def get_model():
 
@@ -12,10 +19,12 @@ def get_model():
 
     if MODEL is None:
 
-        print("🧠 Загрузка Whisper модели...")
+        print(
+            "🧠 Загрузка Whisper модели..."
+        )
 
         MODEL = whisper.load_model(
-            "base"
+            MODEL_NAME
         )
 
 
@@ -25,9 +34,14 @@ def get_model():
 
 
 
+# ==========================
+# TRANSCRIBE AUDIO
+# ==========================
+
 def transcribe_audio(
         audio_file
 ):
+
 
     model = get_model()
 
@@ -38,36 +52,97 @@ def transcribe_audio(
 
 
     result = model.transcribe(
+
         audio_file,
+
         language="ru",
-        word_timestamps=True
+
+        word_timestamps=True,
+
+        fp16=False
+
     )
+
 
 
     words = []
 
 
-    for segment in result["segments"]:
 
-        for word in segment["words"]:
+    for segment in result.get(
+        "segments",
+        []
+    ):
 
-            words.append({
 
-                "word":
-                    word["word"].strip(),
+        for item in segment.get(
+            "words",
+            []
+        ):
 
-                "start":
-                    word["start"],
 
-                "end":
-                    word["end"]
+            word = item.get(
+                "word",
+                ""
+            ).strip()
 
-            })
+
+
+            start = item.get(
+                "start",
+                None
+            )
+
+
+            end = item.get(
+                "end",
+                None
+            )
+
+
+
+            if not word:
+                continue
+
+
+
+            if start is None or end is None:
+                continue
+
+
+
+            words.append(
+
+                {
+
+                    "word": word,
+
+                    "start": float(start),
+
+                    "end": float(end)
+
+                }
+
+            )
+
 
 
     print(
         f"✅ Найдено слов: {len(words)}"
     )
+
+
+
+    if words:
+
+        print(
+            "🔤 Пример:"
+        )
+
+        print(
+            words[:5]
+        )
+
 
 
     return words
