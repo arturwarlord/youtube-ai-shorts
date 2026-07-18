@@ -14,13 +14,20 @@ os.makedirs(
 
 def download_music(track):
 
-    filename = (
-        track["name"]
-        .replace(" ","_")
-        .replace("/","")
-        +
-        ".mp3"
-    )
+    import re
+
+
+filename = re.sub(
+    r'[^a-zA-Z0-9_-]',
+    '',
+    track["name"]
+)
+
+filename = (
+    filename[:80]
+    +
+    ".mp3"
+)
 
 
     path = os.path.join(
