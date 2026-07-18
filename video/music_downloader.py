@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 
 
@@ -11,23 +12,19 @@ os.makedirs(
 )
 
 
-
 def download_music(track):
 
-    import re
+    filename = re.sub(
+        r"[^a-zA-Z0-9_-]",
+        "",
+        track["name"]
+    )
 
-
-filename = re.sub(
-    r'[^a-zA-Z0-9_-]',
-    '',
-    track["name"]
-)
-
-filename = (
-    filename[:80]
-    +
-    ".mp3"
-)
+    filename = (
+        filename[:80]
+        +
+        ".mp3"
+    )
 
 
     path = os.path.join(
@@ -47,7 +44,8 @@ filename = (
 
 
     print(
-        "⬇ Скачивание музыки"
+        "⬇ Скачивание музыки:",
+        track["name"]
     )
 
 
@@ -55,6 +53,9 @@ filename = (
         track["url"],
         timeout=60
     )
+
+
+    response.raise_for_status()
 
 
     with open(
@@ -65,6 +66,12 @@ filename = (
         file.write(
             response.content
         )
+
+
+    print(
+        "✅ Музыка сохранена:",
+        path
+    )
 
 
     return path
