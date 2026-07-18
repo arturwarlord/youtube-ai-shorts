@@ -35,8 +35,7 @@ FADE_TIME = 0.35
 # ==========================
 
 def create_subtitle(
-        text,
-        duration
+    words
 ):
 
 
