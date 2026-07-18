@@ -9,3 +9,4 @@ imageio-ffmpeg
 Pillow
 numpy
 ffmpeg-python
+openai-whisper
