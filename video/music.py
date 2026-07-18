@@ -5,18 +5,24 @@ from moviepy import (
     CompositeAudioClip
 )
 
-from moviepy.audio.fx import AudioLoop
+from moviepy.audio.fx.AudioLoop import AudioLoop
+
 
 
 MUSIC_DIR = "assets/music"
 
 
 
+
+
 def load_music(style="dark"):
 
 
-    # Если передали уже готовый путь к файлу
-    # например assets/music/cache/music.mp3
+    # ==========================
+    # Если передан готовый путь
+    # Например:
+    # assets/music/cache/music.mp3
+    # ==========================
 
     if os.path.exists(style):
 
@@ -30,8 +36,11 @@ def load_music(style="dark"):
 
 
 
-    # Старый режим:
+
+    # ==========================
+    # Старый режим
     # dark -> assets/music/dark.mp3
+    # ==========================
 
     music_file = (
         f"{MUSIC_DIR}/{style}.mp3"
@@ -47,6 +56,7 @@ def load_music(style="dark"):
 
 
 
+
     if not os.path.exists(music_file):
 
         print(
@@ -57,14 +67,18 @@ def load_music(style="dark"):
 
 
 
+
     print(
         f"🎵 Загружена музыка: {music_file}"
     )
 
 
+
     return AudioFileClip(
         music_file
     )
+
+
 
 
 
@@ -84,6 +98,9 @@ def add_background_music(
 
 
 
+    # если музыки нет,
+    # оставляем только голос
+
     if music is None:
 
         return voice
@@ -91,14 +108,19 @@ def add_background_music(
 
 
 
+
+    # ==========================
+    # Подгоняем длину музыки
+    # ==========================
+
     if music.duration < duration:
 
 
-    music = AudioLoop(
-        duration=duration
-    ).apply(
-        music
-    )
+        music = AudioLoop(
+            duration=duration
+        ).apply(
+            music
+        )
 
 
     else:
@@ -111,11 +133,24 @@ def add_background_music(
 
 
 
+
+
+
+    # ==========================
+    # Громкость
+    # ==========================
+
     music = music.with_volume_scaled(
         volume
     )
 
 
+
+
+
+    # ==========================
+    # Голос + музыка
+    # ==========================
 
     return CompositeAudioClip(
         [
