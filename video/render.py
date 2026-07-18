@@ -3,10 +3,6 @@ import asyncio
 import requests
 import random
 import edge_tts
-from ai.music_selector import select_music_style
-
-from video.music_downloader import download_music
-from ai.music_selector import select_music_style
 
 from dotenv import load_dotenv
 
@@ -26,19 +22,17 @@ from video.music import add_background_music
 from video.freesound import search_music
 from video.music_downloader import download_music
 
+from ai.music_selector import select_music_style
 
 
 load_dotenv()
 
 
-
 PEXELS_KEY = os.getenv("PEXELS_KEY")
-
 
 
 OUTPUT_DIR = "output"
 TEMP_DIR = "temp"
-
 
 
 os.makedirs(
@@ -53,11 +47,8 @@ os.makedirs(
 )
 
 
-
 WIDTH = 1080
 HEIGHT = 1920
-
-
 
 
 
@@ -65,16 +56,11 @@ HEIGHT = 1920
 # VOICE
 # ==========================
 
-async def create_voice(
-        text,
-        filename
-):
-
+async def create_voice(text, filename):
 
     if isinstance(text, list):
 
         text = " ".join(text)
-
 
 
     voice = edge_tts.Communicate(
@@ -86,12 +72,9 @@ async def create_voice(
     )
 
 
-
     await voice.save(
         filename
     )
-
-
 
 
 
@@ -101,16 +84,11 @@ async def create_voice(
 # SEARCH PEXELS
 # ==========================
 
-def search_video(
-        query,
-        index
-):
-
+def search_video(query, index):
 
     print(
         f"🔎 Поиск: {query}"
     )
-
 
 
     url = (
@@ -118,13 +96,11 @@ def search_video(
     )
 
 
-
     headers = {
 
         "Authorization": PEXELS_KEY
 
     }
-
 
 
     params = {
@@ -136,7 +112,6 @@ def search_video(
         "orientation": "portrait"
 
     }
-
 
 
     response = requests.get(
@@ -152,9 +127,7 @@ def search_video(
     )
 
 
-
     data = response.json()
-
 
 
     if not data.get("videos"):
@@ -164,9 +137,7 @@ def search_video(
         )
 
 
-
     videos = data["videos"]
-
 
 
     video = random.choice(
@@ -174,19 +145,16 @@ def search_video(
     )
 
 
-
     files = video["video_files"]
-
 
 
     files = [
 
         f for f in files
 
-        if f.get("width",0) >= 720
+        if f.get("width", 0) >= 720
 
     ]
-
 
 
     if not files:
@@ -195,27 +163,21 @@ def search_video(
 
 
 
-
     file = max(
 
         files,
 
-        key=lambda x:x.get("width",0)
+        key=lambda x: x.get("width", 0)
 
     )
-
 
 
     link = file["link"]
 
 
-
     filename = (
-
         f"{TEMP_DIR}/clip_{index}.mp4"
-
     )
-
 
 
     content = requests.get(
@@ -227,11 +189,9 @@ def search_video(
     ).content
 
 
-
-    with open(filename,"wb") as f:
+    with open(filename, "wb") as f:
 
         f.write(content)
-
 
 
     print(
@@ -239,10 +199,7 @@ def search_video(
     )
 
 
-
     return filename
-
-
 
 
 
@@ -252,10 +209,7 @@ def search_video(
 # PREPARE CLIP
 # ==========================
 
-def prepare_clip(
-        filename,
-        duration
-):
+def prepare_clip(filename, duration):
 
 
     clip = VideoFileClip(
@@ -263,21 +217,16 @@ def prepare_clip(
     )
 
 
-
     clip = clip.resized(
         height=HEIGHT
     )
 
 
-
     if clip.w < WIDTH:
-
 
         clip = clip.resized(
             width=WIDTH
         )
-
-
 
 
     clip = Crop(
@@ -286,19 +235,16 @@ def prepare_clip(
 
         height=HEIGHT,
 
-        x_center=clip.w/2,
+        x_center=clip.w / 2,
 
-        y_center=clip.h/2
+        y_center=clip.h / 2
 
     ).apply(
         clip
     )
 
 
-
-
-
-    # эффект движения камеры
+    # оставляем твой zoom эффект
 
     try:
 
@@ -306,7 +252,7 @@ def prepare_clip(
 
             lambda t:
 
-            1 + (0.02*t)
+            1 + (0.02 * t)
 
         )
 
@@ -316,18 +262,13 @@ def prepare_clip(
 
 
 
-
-
     if clip.duration < duration:
-
 
         clip = clip.with_duration(
             duration
         )
 
-
     else:
-
 
         clip = clip.subclipped(
 
@@ -338,11 +279,7 @@ def prepare_clip(
         )
 
 
-
     return clip
-
-
-
 
 
 
@@ -353,11 +290,8 @@ def prepare_clip(
 # ==========================
 
 def create_video(
-
         scenes,
-
         music_style=None
-
 ):
 
 
@@ -366,13 +300,9 @@ def create_video(
     )
 
 
-
     voice_file = (
-
         f"{TEMP_DIR}/voice.mp3"
-
     )
-
 
 
     texts = [
@@ -384,7 +314,8 @@ def create_video(
     ]
 
 
-        # ==========================
+
+    # ==========================
     # AUTO MUSIC SEARCH
     # ==========================
 
@@ -393,17 +324,18 @@ def create_video(
 
 
     music_file = None
-    
-    
-    # короткий запрос для музыки
-  music_query = select_music_style(
-    full_text
-)
 
-print(
-    f"🎼 Определён стиль музыки: {music_query}"
-)
-    
+
+    music_query = select_music_style(
+        full_text
+    )
+
+
+    print(
+        f"🎼 Определён стиль музыки: {music_query}"
+    )
+
+
     track = search_music(
         music_query
     )
@@ -411,10 +343,10 @@ print(
 
     if track:
 
-
         music_file = download_music(
             track
         )
+
 
 
 
@@ -432,29 +364,21 @@ print(
 
 
 
-
     audio = AudioFileClip(
         voice_file
     )
 
 
-
     total_duration = audio.duration
 
 
-
     print(
-
         f"⏱ Длина голоса: {total_duration:.2f} сек"
-
     )
 
 
 
-
-
     amount = len(scenes) * 2
-
 
 
     clip_duration = (
@@ -465,16 +389,10 @@ print(
 
 
 
-
-
     clips = []
 
 
-
     counter = 1
-
-
-
 
 
     print(
@@ -483,13 +401,10 @@ print(
 
 
 
-
     for scene in scenes:
 
 
-
         for part in range(2):
-
 
 
             video_file = search_video(
@@ -501,7 +416,6 @@ print(
             )
 
 
-
             clip = prepare_clip(
 
                 video_file,
@@ -511,8 +425,6 @@ print(
             )
 
 
-
-
             subtitle = create_subtitle(
 
                 scene["text"],
@@ -520,9 +432,6 @@ print(
                 clip_duration
 
             )
-
-
-
 
 
             clip = CompositeVideoClip(
@@ -538,13 +447,9 @@ print(
             )
 
 
-
-
-
             clips.append(
                 clip
             )
-
 
 
             counter += 1
@@ -552,13 +457,9 @@ print(
 
 
 
-
-
     print(
         "✂️ Склейка сцен"
     )
-
-
 
 
     final = concatenate_videoclips(
@@ -571,51 +472,33 @@ print(
 
 
 
-
-
-    # ==========================
-    # AUDIO MIX
-    # ==========================
-
-
     print(
         "🎵 Добавление музыки"
     )
 
 
-
     final_audio = add_background_music(
 
-    audio,
+        audio,
 
-    total_duration,
+        total_duration,
 
-    style=music_file if music_file else "dark",
+        style=music_file if music_file else "dark",
 
-    volume=0.12
-
-)
-
-
-
-    final = final.with_audio(
-    final_audio
-)
-
-
-
-
-
-
-
-    output = (
-
-        f"{OUTPUT_DIR}/short.mp4"
+        volume=0.12
 
     )
 
 
+    final = final.with_audio(
+        final_audio
+    )
 
+
+
+    output = (
+        f"{OUTPUT_DIR}/short.mp4"
+    )
 
 
     print(
@@ -623,37 +506,23 @@ print(
     )
 
 
-
-
-
     final.write_videofile(
-
 
         output,
 
-
         fps=30,
-
 
         codec="libx264",
 
-
         audio_codec="aac",
-
 
         audio_bitrate="192k",
 
-
         preset="medium",
-
 
         threads=2
 
-
     )
-
-
-
 
 
     print(
