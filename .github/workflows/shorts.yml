@@ -52,11 +52,18 @@ jobs:
     - name: Run AI
 
       env:
+
         GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+
         PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
 
+        FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+
+
       run:
+
         python main.py
+
 
 
     - name: Save video
@@ -64,5 +71,7 @@ jobs:
       uses: actions/upload-artifact@v4
 
       with:
+
         name: youtube-short
+
         path: output/short.mp4
