@@ -1,9 +1,9 @@
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
-import textwrap
 
 from moviepy import ImageClip
 from moviepy.video.fx import FadeIn, FadeOut
+
 
 
 FONT_PATH = "assets/fonts/Montserrat-ExtraBold.ttf"
@@ -13,98 +13,77 @@ WIDTH = 1080
 HEIGHT = 1920
 
 
+FONT_SIZE = 70
 
-# ==========================
-# SETTINGS
-# ==========================
+POSITION_Y = 0.65
 
-FONT_SIZE = 62
-
-TEXT_WIDTH = 26
-
-POSITION_Y = 0.63
-
-
-FADE_TIME = 0.35
+FADE_TIME = 0.15
 
 
 
-
-# ==========================
-# CREATE SUBTITLE
-# ==========================
-
-def create_subtitle(
-    words
-):
+def create_text_image(text):
 
 
     img = Image.new(
+
         "RGBA",
+
         (WIDTH, HEIGHT),
+
         (0,0,0,0)
+
     )
 
 
-    draw = ImageDraw.Draw(
-        img
-    )
+    draw = ImageDraw.Draw(img)
 
 
 
     font = ImageFont.truetype(
+
         FONT_PATH,
+
         FONT_SIZE
+
     )
 
 
 
-    # перенос строк
+    bbox = draw.textbbox(
 
-    lines = textwrap.fill(
-        text,
-        width=TEXT_WIDTH
-    )
-
-
-
-    bbox = draw.multiline_textbbox(
         (0,0),
-        lines,
-        font=font,
-        align="center",
-        spacing=10
+
+        text,
+
+        font=font
+
     )
 
 
 
-    tw = bbox[2]-bbox[0]
+    w = bbox[2] - bbox[0]
 
-    th = bbox[3]-bbox[1]
-
-
-
-    x = (
-        WIDTH - tw
-    ) / 2
+    h = bbox[3] - bbox[1]
 
 
 
-    y = (
-        HEIGHT * POSITION_Y
-    )
+    x = (WIDTH - w) / 2
+
+
+    y = HEIGHT * POSITION_Y
 
 
 
-    # ======================
-    # мягкая тень
-    # ======================
-
+    # тень
 
     shadow = Image.new(
+
         "RGBA",
+
         (WIDTH,HEIGHT),
+
         (0,0,0,0)
+
     )
 
 
@@ -113,28 +92,22 @@ def create_subtitle(
     )
 
 
-    shadow_draw.multiline_text(
+    shadow_draw.text(
 
-        (x+4,y+4),
+        (x+5,y+5),
 
-        lines,
+        text,
 
         font=font,
 
-        fill=(0,0,0,180),
-
-        align="center",
-
-        spacing=10
+        fill=(0,0,0,180)
 
     )
-
 
 
     shadow = shadow.filter(
-        ImageFilter.GaussianBlur(4)
+        ImageFilter.GaussianBlur(5)
     )
-
 
 
     img.alpha_composite(
@@ -143,51 +116,87 @@ def create_subtitle(
 
 
 
-    # ======================
-    # основной текст
-    # ======================
+    # текст
 
-
-    draw.multiline_text(
+    draw.text(
 
         (x,y),
 
-        lines,
+        text,
 
         font=font,
 
-        fill=(255,255,255,255),
-
-        align="center",
-
-        spacing=10
+        fill=(255,255,255,255)
 
     )
 
 
-
-    clip = ImageClip(
-        np.array(img),
-        duration=duration
-    )
+    return np.array(img)
 
 
 
-    # ======================
-    # fade
-    # ======================
+
+def create_subtitle(words):
 
 
-    clip = clip.with_effects(
-    [
-        FadeIn(
-            FADE_TIME
-        ),
-        FadeOut(
-            FADE_TIME
+    clips = []
+
+
+    for item in words:
+
+
+        text = item["word"].upper()
+
+
+        start = item["start"]
+
+        end = item["end"]
+
+
+        duration = end - start
+
+
+
+        img = create_text_image(
+            text
         )
-    ]
-)
 
 
-    return clip
+        clip = ImageClip(
+
+            img,
+
+            duration=duration
+
+        )
+
+
+        clip = clip.with_start(
+            start
+        )
+
+
+        clip = clip.with_effects(
+
+            [
+
+                FadeIn(
+                    FADE_TIME
+                ),
+
+                FadeOut(
+                    FADE_TIME
+                )
+
+            ]
+
+        )
+
+
+        clips.append(
+            clip
+        )
+
+
+
+    return clips
