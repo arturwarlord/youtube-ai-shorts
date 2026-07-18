@@ -6,7 +6,6 @@ from moviepy import (
 )
 
 
-
 MUSIC_DIR = "assets/music"
 
 
@@ -14,9 +13,28 @@ MUSIC_DIR = "assets/music"
 def load_music(style="dark"):
 
 
+    # Если передали уже готовый путь к файлу
+    # например assets/music/cache/music.mp3
+
+    if os.path.exists(style):
+
+        print(
+            f"🎵 Загружена музыка: {style}"
+        )
+
+        return AudioFileClip(
+            style
+        )
+
+
+
+    # Старый режим:
+    # dark -> assets/music/dark.mp3
+
     music_file = (
         f"{MUSIC_DIR}/{style}.mp3"
     )
+
 
 
     if not os.path.exists(music_file):
@@ -40,7 +58,6 @@ def load_music(style="dark"):
     print(
         f"🎵 Загружена музыка: {music_file}"
     )
-
 
 
     return AudioFileClip(
@@ -90,11 +107,9 @@ def add_background_music(
 
 
 
-
     music = music.with_volume_scaled(
         volume
     )
-
 
 
 
