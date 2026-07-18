@@ -3,6 +3,10 @@ import asyncio
 import requests
 import random
 import edge_tts
+from ai.music_selector import select_music_style
+
+from video.music_downloader import download_music
+from ai.music_selector import select_music_style
 
 from dotenv import load_dotenv
 
@@ -392,8 +396,13 @@ def create_video(
     
     
     # короткий запрос для музыки
-    music_query = "dark ambient cinematic"
-    
+  music_query = select_music_style(
+    full_text
+)
+
+print(
+    f"🎼 Определён стиль музыки: {music_query}"
+)
     
     track = search_music(
         music_query
