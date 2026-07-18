@@ -94,9 +94,11 @@ def add_background_music(
     if music.duration < duration:
 
 
-        music = music.loop(
-            duration=duration
-        )
+    music = AudioLoop(
+        duration=duration
+    ).apply(
+        music
+    )
 
 
     else:
