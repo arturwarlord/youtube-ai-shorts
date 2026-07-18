@@ -5,6 +5,8 @@ from moviepy import (
     CompositeAudioClip
 )
 
+from moviepy.audio.fx import AudioLoop
+
 
 MUSIC_DIR = "assets/music"
 
