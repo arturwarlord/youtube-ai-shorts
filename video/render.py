@@ -243,43 +243,6 @@ def prepare_clip(filename, duration):
     ).apply(
         clip
     )
-# ==========================
-# SPLIT WORDS
-# ==========================
-
-   def split_words_by_scenes(words, scenes):
-
-    total_words = len(words)
-
-    words_per_scene = total_words // len(scenes)
-
-
-    result = []
-
-    start = 0
-
-
-    for index, scene in enumerate(scenes):
-
-        if index == len(scenes) - 1:
-
-            scene_words = words[start:]
-
-        else:
-
-            scene_words = words[
-                start:start + words_per_scene
-            ]
-
-
-        result.append(
-            scene_words
-        )
-
-        start += words_per_scene
-
-
-    return result
 
 
     # оставляем твой zoom эффект
@@ -320,6 +283,44 @@ def prepare_clip(filename, duration):
     return clip
 
 
+# ==========================
+# SPLIT WORDS
+# ==========================
+
+
+def split_words_by_scenes(words, scenes):
+
+    total_words = len(words)
+
+    words_per_scene = total_words // len(scenes)
+
+
+    result = []
+
+    start = 0
+
+
+    for index, scene in enumerate(scenes):
+
+        if index == len(scenes) - 1:
+
+            scene_words = words[start:]
+
+        else:
+
+            scene_words = words[
+                start:start + words_per_scene
+            ]
+
+
+        result.append(
+            scene_words
+        )
+
+        start += words_per_scene
+
+
+    return result
 
 
 
@@ -407,14 +408,14 @@ def create_video(
     )
 
     words = transcribe_audio(
-    voice_file
-)
+        voice_file
+    )
 
 
-scene_words = split_words_by_scenes(
-    words,
-    scenes
-)
+    scene_words = split_words_by_scenes(
+        words,
+        scenes
+    )
 
 
     total_duration = audio.duration
