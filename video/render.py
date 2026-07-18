@@ -19,6 +19,9 @@ from moviepy.video.fx import Crop
 from video.subtitles import create_subtitle
 from video.music import add_background_music
 
+from video.freesound import search_music
+from video.music_downloader import download_music
+
 
 
 load_dotenv()
@@ -349,7 +352,7 @@ def create_video(
 
         scenes,
 
-        music_style="dark"
+        music_style=None
 
 ):
 
@@ -375,6 +378,31 @@ def create_video(
         for s in scenes
 
     ]
+
+
+        # ==========================
+    # AUTO MUSIC SEARCH
+    # ==========================
+
+
+    full_text = " ".join(texts)
+
+
+    music_file = None
+
+
+
+    track = search_music(
+        f"dark ambient cinematic {full_text}"
+    )
+
+
+    if track:
+
+
+        music_file = download_music(
+            track
+        )
 
 
 
@@ -550,7 +578,7 @@ def create_video(
 
     total_duration,
 
-    style=music_style,
+    style=music_file if music_file else "dark",
 
     volume=0.12
 
