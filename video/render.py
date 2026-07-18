@@ -283,46 +283,6 @@ def prepare_clip(filename, duration):
     return clip
 
 
-# ==========================
-# SPLIT WORDS
-# ==========================
-
-
-def split_words_by_scenes(words, scenes):
-
-    total_words = len(words)
-
-    words_per_scene = total_words // len(scenes)
-
-
-    result = []
-
-    start = 0
-
-
-    for index, scene in enumerate(scenes):
-
-        if index == len(scenes) - 1:
-
-            scene_words = words[start:]
-
-        else:
-
-            scene_words = words[
-                start:start + words_per_scene
-            ]
-
-
-        result.append(
-            scene_words
-        )
-
-        start += words_per_scene
-
-
-    return result
-
-
 
 # ==========================
 # CREATE VIDEO
@@ -412,12 +372,6 @@ def create_video(
     )
 
 
-    scene_words = split_words_by_scenes(
-        words,
-        scenes
-    )
-
-
     total_duration = audio.duration
 
 
@@ -450,9 +404,8 @@ def create_video(
 
 
 
-    for scene_index, scene in enumerate(scenes):
+     for scene in scenes:
 
-        current_words = scene_words[scene_index]
 
         for part in range(2):
 
@@ -472,24 +425,6 @@ def create_video(
 
                 clip_duration
 
-            )
-
-
-            subtitle = create_subtitle(
-                current_words
-            )
-
-
-            clip = CompositeVideoClip(
-
-                [
-            
-                    clip,
-            
-                    *subtitle
-            
-                ]
-            
             )
 
 
@@ -516,7 +451,24 @@ def create_video(
 
     )
 
-
+    print(
+        "💬 Добавление субтитров"
+    )
+    
+    
+    subtitle_layer = create_subtitle(
+        words
+    )
+    
+    
+    final = CompositeVideoClip(
+    
+        [
+            final,
+            *subtitle_layer
+        ]
+    
+    )
 
     print(
         "🎵 Добавление музыки"
