@@ -24,6 +24,7 @@ from video.music_downloader import download_music
 
 from ai.music_selector import select_music_style
 
+from audio.whisper import transcribe_audio
 
 load_dotenv()
 
@@ -366,6 +367,10 @@ def create_video(
 
     audio = AudioFileClip(
         voice_file
+    )
+
+    words = transcribe_audio(
+    voice_file
     )
 
 
