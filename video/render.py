@@ -245,6 +245,39 @@ def prepare_clip(filename, duration):
     )
 
 
+    def split_words_by_scenes(words, scenes):
+
+    total_words = len(words)
+
+    words_per_scene = total_words // len(scenes)
+
+
+    result = []
+
+    start = 0
+
+
+    for index, scene in enumerate(scenes):
+
+        if index == len(scenes) - 1:
+
+            scene_words = words[start:]
+
+        else:
+
+            scene_words = words[
+                start:start + words_per_scene
+            ]
+
+
+        result.append(scene_words)
+
+        start += words_per_scene
+
+
+    return result
+
+
     # оставляем твой zoom эффект
 
     try:
@@ -371,7 +404,13 @@ def create_video(
 
     words = transcribe_audio(
     voice_file
-    )
+)
+
+
+scene_words = split_words_by_scenes(
+    words,
+    scenes
+)
 
 
     total_duration = audio.duration
@@ -406,8 +445,9 @@ def create_video(
 
 
 
-    for scene in scenes:
+    for scene_index, scene in enumerate(scenes):
 
+        current_words = scene_words[scene_index]
 
         for part in range(2):
 
@@ -431,24 +471,20 @@ def create_video(
 
 
             subtitle = create_subtitle(
-
-                scene["text"],
-
-                clip_duration
-
+                current_words
             )
 
 
             clip = CompositeVideoClip(
 
                 [
-
+            
                     clip,
-
-                    subtitle
-
+            
+                    *subtitle
+            
                 ]
-
+            
             )
 
 
