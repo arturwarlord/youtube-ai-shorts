@@ -389,11 +389,14 @@ def create_video(
 
 
     music_file = None
-
-
-
+    
+    
+    # короткий запрос для музыки
+    music_query = "dark ambient cinematic"
+    
+    
     track = search_music(
-        f"dark ambient cinematic {full_text}"
+        music_query
     )
 
 
