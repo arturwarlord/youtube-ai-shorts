@@ -404,11 +404,9 @@ def create_video(
 
 
 
-     for scene in scenes:
-
+    for scene in scenes:
 
         for part in range(2):
-
 
             video_file = search_video(
 
