@@ -5,7 +5,6 @@ from moviepy import ImageClip
 from moviepy.video.fx import FadeIn, FadeOut
 
 
-
 FONT_PATH = "assets/fonts/Montserrat-ExtraBold.ttf"
 
 
@@ -13,52 +12,44 @@ WIDTH = 1080
 HEIGHT = 1920
 
 
-FONT_SIZE = 70
+FONT_SIZE = 72
 
 POSITION_Y = 0.65
 
-FADE_TIME = 0.15
+FADE_TIME = 0.08
 
 
+
+# ==========================
+# CREATE WORD IMAGE
+# ==========================
 
 def create_text_image(text):
 
 
     img = Image.new(
-
         "RGBA",
-
         (WIDTH, HEIGHT),
-
         (0,0,0,0)
-
     )
 
 
-    draw = ImageDraw.Draw(img)
-
+    draw = ImageDraw.Draw(
+        img
+    )
 
 
     font = ImageFont.truetype(
-
         FONT_PATH,
-
         FONT_SIZE
-
     )
-
 
 
     bbox = draw.textbbox(
-
         (0,0),
-
         text,
-
         font=font
-
     )
-
 
 
     w = bbox[2] - bbox[0]
@@ -67,23 +58,27 @@ def create_text_image(text):
 
 
 
-    x = (WIDTH - w) / 2
+    x = (
+        WIDTH - w
+    ) / 2
 
 
-    y = HEIGHT * POSITION_Y
+
+    y = (
+        HEIGHT * POSITION_Y
+    )
 
 
 
-    # тень
+    # ======================
+    # SHADOW
+    # ======================
+
 
     shadow = Image.new(
-
         "RGBA",
-
         (WIDTH,HEIGHT),
-
         (0,0,0,0)
-
     )
 
 
@@ -94,19 +89,22 @@ def create_text_image(text):
 
     shadow_draw.text(
 
-        (x+5,y+5),
+        (
+            x + 6,
+            y + 6
+        ),
 
         text,
 
         font=font,
 
-        fill=(0,0,0,180)
+        fill=(0,0,0,220)
 
     )
 
 
     shadow = shadow.filter(
-        ImageFilter.GaussianBlur(5)
+        ImageFilter.GaussianBlur(6)
     )
 
 
@@ -116,7 +114,10 @@ def create_text_image(text):
 
 
 
-    # текст
+    # ======================
+    # TEXT
+    # ======================
+
 
     draw.text(
 
@@ -131,10 +132,16 @@ def create_text_image(text):
     )
 
 
-    return np.array(img)
+    return np.array(
+        img
+    )
 
 
 
+
+# ==========================
+# CREATE SUBTITLES
+# ==========================
 
 def create_subtitle(words):
 
@@ -142,38 +149,63 @@ def create_subtitle(words):
     clips = []
 
 
+
     for item in words:
 
 
-        text = item["word"].upper()
+        word = item.get(
+            "word",
+            ""
+        )
 
 
-        start = item["start"]
+        if not word:
+            continue
 
-        end = item["end"]
+
+
+        start = item.get(
+            "start",
+            0
+        )
+
+
+        end = item.get(
+            "end",
+            start + 0.3
+        )
+
 
 
         duration = end - start
 
 
 
-        img = create_text_image(
+        if duration <= 0:
+            continue
+
+
+
+        text = word.upper()
+
+
+
+        image = create_text_image(
             text
         )
 
 
+
         clip = ImageClip(
-
-            img,
-
+            image,
             duration=duration
-
         )
 
 
         clip = clip.with_start(
             start
         )
+
 
 
         clip = clip.with_effects(
