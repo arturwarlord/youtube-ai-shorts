@@ -1,5 +1,6 @@
 import os
 import requests
+
 from dotenv import load_dotenv
 
 
@@ -17,9 +18,9 @@ BASE_URL = "https://freesound.org/apiv2"
 
 def search_music(query):
 
-    if not API_KEY:
-        print("❌ Нет FREESOUND_API_KEY")
-        return None
+    print(
+        f"🎵 Поиск музыки: {query}"
+    )
 
 
     url = f"{BASE_URL}/search/text/"
@@ -31,9 +32,10 @@ def search_music(query):
 
         "token": API_KEY,
 
-        "fields": "id,name,previews,tags,duration",
+        "fields":
+        "id,name,previews,duration,tags",
 
-        "page_size": 10
+        "page_size": 15
 
     }
 
@@ -48,7 +50,7 @@ def search_music(query):
     if response.status_code != 200:
 
         print(
-            "❌ Freesound ошибка:",
+            "❌ Freesound:",
             response.text
         )
 
@@ -56,10 +58,7 @@ def search_music(query):
 
 
 
-    data = response.json()
-
-
-    results = data.get(
+    results = response.json().get(
         "results",
         []
     )
@@ -79,17 +78,18 @@ def search_music(query):
 
 
     print(
-        "🎵 Найден трек:",
+        "🎧 Выбран:",
         track["name"]
     )
 
 
     return {
 
-        "name": track["name"],
+        "name":
+        track["name"],
 
-        "url": track["previews"]["preview-hq-mp3"],
 
-        "duration": track["duration"]
+        "url":
+        track["previews"]["preview-hq-mp3"]
 
     }
