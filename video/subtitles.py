@@ -1,4 +1,5 @@
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
 import numpy as np
 
 from moviepy import ImageClip
@@ -15,22 +16,7 @@ FONT_SIZE = 70
 
 POSITION_Y = 0.65
 
-
-# ==========================
-# ANIMATION SETTINGS
-# ==========================
-
-# Длительность появления
-ANIMATION_IN = 0.10
-
-# Длительность исчезновения
-ANIMATION_OUT = 0.10
-
-# Начальный масштаб слова
-START_SCALE = 0.88
-
-# Финальный масштаб
-END_SCALE = 1.0
+FADE_TIME = 0.12
 
 
 # ==========================
@@ -85,9 +71,17 @@ def create_text_image(text):
             x + 5,
             y + 5
         ),
+
         text,
+
         font=font,
-        fill=(0, 0, 0, 200)
+
+        fill=(
+            0,
+            0,
+            0,
+            200
+        )
     )
 
     shadow = shadow.filter(
@@ -108,134 +102,23 @@ def create_text_image(text):
             x,
             y
         ),
+
         text,
+
         font=font,
-        fill=(255, 255, 255, 255)
+
+        fill=(
+            255,
+            255,
+            255,
+            255
+        )
     )
 
 
-    return np.array(img)
-
-
-# ==========================
-# ANIMATED SUBTITLE
-# ==========================
-
-def create_animated_word(
-    text,
-    start,
-    end
-):
-
-    duration = end - start
-
-
-    if duration <= 0:
-
-        return None
-
-
-    image = create_text_image(
-        text
+    return np.array(
+        img
     )
-
-
-    clip = ImageClip(
-        image,
-        duration=duration
-    )
-
-
-    # ==========================
-    # TIMING
-    # ==========================
-
-    fade_in_end = min(
-        ANIMATION_IN,
-        duration / 2
-    )
-
-
-    fade_out_start = max(
-        duration - ANIMATION_OUT,
-        fade_in_end
-    )
-
-
-    # ==========================
-    # OPACITY ANIMATION
-    # ==========================
-
-    def opacity_animation(t):
-
-        if t < fade_in_end:
-
-            progress = t / fade_in_end
-
-            return progress
-
-
-        if t > fade_out_start:
-
-            progress = (
-                duration - t
-            ) / ANIMATION_OUT
-
-            return max(
-                0,
-                progress
-            )
-
-
-        return 1
-
-
-    clip = clip.with_opacity(
-        opacity_animation
-    )
-
-
-    # ==========================
-    # SCALE ANIMATION
-    # ==========================
-
-    def scale_animation(t):
-
-        if t < fade_in_end:
-
-            progress = t / fade_in_end
-
-            return (
-                START_SCALE
-                +
-                (
-                    END_SCALE
-                    -
-                    START_SCALE
-                )
-                *
-                progress
-            )
-
-
-        return END_SCALE
-
-
-    clip = clip.resized(
-        scale_animation
-    )
-
-
-    # ==========================
-    # TIMING
-    # ==========================
-
-    clip = clip.with_start(
-        start
-    )
-
-
-    return clip
 
 
 # ==========================
@@ -249,37 +132,65 @@ def create_subtitle(words):
 
     for item in words:
 
-
         text = item["word"].upper()
-
 
         start = item["start"]
 
-
         end = item["end"]
 
+        duration = end - start
 
-        clip = create_animated_word(
 
-            text,
+        if duration <= 0:
 
-            start,
+            continue
 
-            end
 
+        img = create_text_image(
+            text
         )
 
 
-        if clip is not None:
+        clip = ImageClip(
+            img,
+            duration=duration
+        )
 
-            clips.append(
-                clip
-            )
+
+        clip = clip.with_start(
+            start
+        )
 
 
-    print(
-        f"💬 Создано субтитров: {len(clips)}"
-    )
+        # ==========================
+        # OPACITY ANIMATION
+        # ==========================
+
+        def opacity(t):
+
+            if t < FADE_TIME:
+
+                return t / FADE_TIME
+
+
+            if t > duration - FADE_TIME:
+
+                return (
+                    duration - t
+                ) / FADE_TIME
+
+
+            return 1.0
+
+
+        clip = clip.with_opacity(
+            opacity
+        )
+
+
+        clips.append(
+            clip
+        )
 
 
     return clips
