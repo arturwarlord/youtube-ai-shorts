@@ -1,36 +1,27 @@
 import os
 import json
 import random
+import re
 
 from dotenv import load_dotenv
 from google import genai
 
 
 # =========================================================
-# ENVIRONMENT
+# ENV
 # =========================================================
 
 load_dotenv()
 
 
 # =========================================================
-# GEMINI CLIENT
+# GEMINI
 # =========================================================
 
 client = genai.Client(
-
-    api_key=os.getenv(
-
-        "GEMINI_KEY"
-
-    )
-
+    api_key=os.getenv("GEMINI_KEY")
 )
 
-
-# =========================================================
-# MODELS
-# =========================================================
 
 MODELS = [
 
@@ -44,114 +35,107 @@ MODELS = [
 
 
 # =========================================================
-# PATHS
+# HISTORY
 # =========================================================
 
-HISTORY_FILE = (
-
-    "ai/topic_history.json"
-
-)
+HISTORY_FILE = "topic_history.json"
 
 
-# =========================================================
-# SCRIPT FORMATS
-# =========================================================
-
-SCRIPT_FORMATS = [
-
-    "SCIENTIFIC_SHOCK",
-
-    "THOUGHT_EXPERIMENT",
-
-    "REAL_EXPERIMENT",
-
-    "MYTH_BUSTING",
-
-    "HIDDEN_MECHANISM",
-
-    "HISTORICAL_DISCOVERY",
-
-    "FUTURE_SCENARIO",
-
-    "DARK_QUESTION"
-
-]
+MAX_HISTORY = 50
 
 
 # =========================================================
-# TOPIC CATEGORIES
+# CONTENT SETTINGS
 # =========================================================
 
-TOPIC_CATEGORIES = [
+CATEGORIES = [
 
     "мозг и сознание",
 
     "космос и Вселенная",
 
-    "физика повседневных явлений",
-
-    "человеческое тело",
-
-    "биология и эволюция",
-
-    "животные и природа",
-
-    "время и пространство",
-
-    "технологии и искусственный интеллект",
+    "история научных открытий",
 
     "научные эксперименты",
 
-    "необычные явления на Земле",
+    "человеческое тело",
 
-    "медицина и открытия",
+    "животные и природа",
 
-    "океан и глубоководный мир",
+    "океан и глубины",
 
-    "геология и вулканы",
+    "физика повседневности",
 
-    "химия в повседневной жизни",
+    "технологии",
 
-    "генетика"
+    "психология",
+
+    "парадоксы науки",
+
+    "загадки прошлого",
+
+    "медицина",
+
+    "эволюция",
+
+    "катастрофы и выживание"
 
 ]
 
 
-# =========================================================
-# EMOTIONS
-# =========================================================
+FORMATS = [
+
+    "HISTORICAL_DISCOVERY",
+
+    "SCIENTIFIC_MYSTERY",
+
+    "EXPERIMENT",
+
+    "UNEXPECTED_FACT",
+
+    "PARADOX",
+
+    "HIDDEN_HISTORY",
+
+    "SCIENTIFIC_FAILURE",
+
+    "HUMAN_LIMITS",
+
+    "NATURE_MYSTERY",
+
+    "FUTURE_PROBLEM"
+
+]
+
 
 EMOTIONS = [
-
-    "удивление",
-
-    "любопытство",
-
-    "тревога",
-
-    "восхищение",
 
     "шок",
 
     "научное любопытство",
 
-    "ощущение тайны"
+    "тревога",
+
+    "удивление",
+
+    "восхищение",
+
+    "страх",
+
+    "парадокс",
+
+    "тайна"
 
 ]
 
 
 # =========================================================
-# LOAD HISTORY
+# HISTORY FUNCTIONS
 # =========================================================
 
 def load_history():
 
-    if not os.path.exists(
-
-        HISTORY_FILE
-
-    ):
+    if not os.path.exists(HISTORY_FILE):
 
         return []
 
@@ -168,82 +152,36 @@ def load_history():
 
         ) as file:
 
-            history = json.load(
-
-                file
-
-            )
+            data = json.load(file)
 
 
-            if isinstance(
+        if isinstance(data, list):
 
-                history,
+            return data
 
-                list
 
-            ):
-
-                return history
+        return []
 
 
     except Exception as e:
 
         print(
-
             f"⚠️ Ошибка чтения истории: {e}"
-
         )
 
+        return []
 
-    return []
 
 
-# =========================================================
-# SAVE HISTORY
-# =========================================================
-
-def save_history(
-
-        title,
-
-        category,
-
-        script_format,
-
-        emotion,
-
-        topic
-
-):
+def save_history(topic_data):
 
     history = load_history()
 
 
-    new_item = {
-
-        "title": title,
-
-        "category": category,
-
-        "format": script_format,
-
-        "emotion": emotion,
-
-        "topic": topic
-
-    }
+    history.append(topic_data)
 
 
-    history.append(
-
-        new_item
-
-    )
-
-
-    # Храним только последние 20 видео
-
-    history = history[-20:]
+    history = history[-MAX_HISTORY:]
 
 
     try:
@@ -266,82 +204,44 @@ def save_history(
 
                 ensure_ascii=False,
 
-                indent=2
+                indent=4
 
             )
 
 
         print(
-
             "💾 История темы сохранена"
-
         )
 
 
     except Exception as e:
 
         print(
-
-            f"⚠️ Не удалось сохранить историю: {e}"
-
+            f"⚠️ Ошибка сохранения истории: {e}"
         )
 
 
-# =========================================================
-# FORMAT HISTORY FOR GEMINI
-# =========================================================
 
-def format_history_for_prompt(
+def get_history_context():
 
-        history
+    history = load_history()
 
-):
 
     if not history:
 
-        return (
-
-            "История отсутствует. "
-
-            "Можно выбрать любую тему."
-
-        )
+        return "История предыдущих тем пуста."
 
 
-    lines = []
+    result = []
 
 
-    for index, item in enumerate(
-
-        history,
-
-        1
-
-    ):
+    for item in history[-30:]:
 
         title = item.get(
 
             "title",
 
-            "Без названия"
-
-        )
-
-
-        category = item.get(
-
-            "category",
-
-            "Неизвестная категория"
-
-        )
-
-
-        script_format = item.get(
-
-            "format",
-
-            "Неизвестный формат"
+            ""
 
         )
 
@@ -350,113 +250,684 @@ def format_history_for_prompt(
 
             "topic",
 
-            "Неизвестная тема"
+            ""
 
         )
 
 
-        lines.append(
+        core_idea = item.get(
 
-            f"{index}. "
+            "core_idea",
 
-            f"Тема: {topic} | "
-
-            f"Категория: {category} | "
-
-            f"Формат: {script_format} | "
-
-            f"Название: {title}"
+            ""
 
         )
 
 
-    return "\n".join(
+        entities = item.get(
 
-        lines
+            "used_entities",
+
+            []
+
+        )
+
+
+        result.append(
+
+            f"- TITLE: {title}\n"
+            f"  TOPIC: {topic}\n"
+            f"  CORE IDEA: {core_idea}\n"
+            f"  ENTITIES: {', '.join(entities)}"
+
+        )
+
+
+    return "\n".join(result)
+
+
+# =========================================================
+# WORD COUNT
+# =========================================================
+
+def count_script_words(text):
+
+    scenes = re.findall(
+
+        r"TEXT:\s*(.*?)(?=\n\s*SEARCH:)",
+
+        text,
+
+        re.DOTALL | re.IGNORECASE
 
     )
 
 
+    full_text = " ".join(scenes)
+
+
+    words = re.findall(
+
+        r"\b[\wЁёА-я-]+\b",
+
+        full_text
+
+    )
+
+
+    return len(words)
+
+
+
+def count_scenes(text):
+
+    scenes = re.findall(
+
+        r"SCENE\s+\d+\s*:",
+
+        text,
+
+        re.IGNORECASE
+
+    )
+
+
+    return len(scenes)
+
+
 # =========================================================
-# EXTRACT TITLE
+# SCRIPT VALIDATION
 # =========================================================
 
-def extract_title(
+def validate_script(text):
 
-        text
+    errors = []
+
+
+    scene_count = count_scenes(text)
+
+
+    if scene_count != 10:
+
+        errors.append(
+
+            f"Найдено сцен: {scene_count}, нужно ровно 10"
+
+        )
+
+
+    word_count = count_script_words(text)
+
+
+    if word_count < 100:
+
+        errors.append(
+
+            f"Слишком короткий сценарий: {word_count} слов"
+
+        )
+
+
+    if word_count > 130:
+
+        errors.append(
+
+            f"Слишком длинный сценарий: {word_count} слов"
+
+        )
+
+
+    required_fields = [
+
+        "TITLE:",
+
+        "TOPIC:",
+
+        "SCENE 1:",
+
+        "SCENE 10:",
+
+        "TEXT:",
+
+        "SEARCH:"
+
+    ]
+
+
+    for field in required_fields:
+
+        if field not in text:
+
+            errors.append(
+
+                f"Отсутствует поле: {field}"
+
+            )
+
+
+    forbidden_phrases = [
+
+        "ты когда-нибудь задумывался",
+
+        "ты думаешь",
+
+        "представь себе",
+
+        "мало кто знает",
+
+        "учёные доказали",
+
+        "это чистая случайность"
+
+    ]
+
+
+    text_lower = text.lower()
+
+
+    for phrase in forbidden_phrases:
+
+        if phrase in text_lower:
+
+            errors.append(
+
+                f"Шаблонная фраза: {phrase}"
+
+            )
+
+
+    if errors:
+
+        print(
+
+            "\n⚠️ Проверка сценария не пройдена:"
+
+        )
+
+
+        for error in errors:
+
+            print(
+
+                f"   ❌ {error}"
+
+            )
+
+
+        return False
+
+
+    print(
+
+        f"✅ Проверка пройдена: "
+        f"{scene_count} сцен, "
+        f"{word_count} слов"
+
+    )
+
+
+    return True
+
+
+# =========================================================
+# EXTRACT TOPIC DATA
+# =========================================================
+
+def extract_field(text, field_name):
+
+    pattern = (
+
+        rf"{field_name}:\s*(.*?)(?=\n[A-ZА-Я ]+:|\Z)"
+
+    )
+
+
+    match = re.search(
+
+        pattern,
+
+        text,
+
+        re.DOTALL | re.IGNORECASE
+
+    )
+
+
+    if not match:
+
+        return ""
+
+
+    return match.group(1).strip()
+
+
+
+def extract_topic_data(
+
+    text,
+
+    category,
+
+    content_format,
+
+    emotion
 
 ):
 
-    lines = text.splitlines()
+    title = extract_field(
+
+        text,
+
+        "TITLE"
+
+    )
 
 
-    for index, line in enumerate(
+    topic = extract_field(
 
-        lines
+        text,
 
-    ):
+        "TOPIC"
 
-        line = line.strip()
-
-
-        if line.upper() == "TITLE:":
-
-            for next_line in lines[index + 1:]:
-
-                next_line = next_line.strip()
+    )
 
 
-                if next_line:
+    core_idea = extract_field(
 
-                    return next_line
+        text,
+
+        "CORE IDEA"
+
+    )
 
 
-    return "Без названия"
+    entities_text = extract_field(
+
+        text,
+
+        "USED ENTITIES"
+
+    )
+
+
+    if not core_idea:
+
+        core_idea = topic
+
+
+    if entities_text:
+
+        entities = [
+
+            item.strip()
+
+            for item in re.split(
+
+                r",|;",
+
+                entities_text
+
+            )
+
+            if item.strip()
+
+        ]
+
+    else:
+
+        entities = []
+
+
+    return {
+
+        "title": title,
+
+        "topic": topic,
+
+        "core_idea": core_idea,
+
+        "used_entities": entities,
+
+        "category": category,
+
+        "format": content_format,
+
+        "emotion": emotion
+
+    }
 
 
 # =========================================================
-# EXTRACT TOPIC
+# PROMPT
 # =========================================================
 
-def extract_topic(
+def build_prompt(
 
-        text
+    category,
+
+    content_format,
+
+    emotion,
+
+    history_context
 
 ):
 
-    lines = text.splitlines()
+    return f"""
 
+Ты профессиональный сценарист
+научного YouTube Shorts-канала
+уровня Dark Science.
 
-    for index, line in enumerate(
+Твоя задача — создать ОДИН уникальный
+научно-популярный сценарий.
 
-        lines
+==================================================
+ПАРАМЕТРЫ ЭТОГО РОЛИКА
+==================================================
 
-    ):
+КАТЕГОРИЯ:
+{category}
 
-        line = line.strip()
+ФОРМАТ:
+{content_format}
 
+ГЛАВНАЯ ЭМОЦИЯ:
+{emotion}
 
-        if line.upper() == "TOPIC:":
+==================================================
+ИСТОРИЯ ПРЕДЫДУЩИХ ТЕМ
+==================================================
 
-            for next_line in lines[index + 1:]:
+{history_context}
 
-                next_line = next_line.strip()
+==================================================
+ЗАПРЕТ НА ПОВТОРЫ
+==================================================
 
+Новая тема НЕ ДОЛЖНА:
 
-                if next_line:
+- повторять предыдущий ролик;
+- быть перефразированной версией старой темы;
+- использовать ту же центральную идею;
+- повторять тот же научный парадокс;
+- повторять главного исторического персонажа;
+- повторять основной объект исследования.
 
-                    return next_line
+Если предыдущий ролик был про:
 
+"Плутон и ошибочные расчёты"
 
-    return "Неизвестная тема"
+нельзя создавать:
+
+"Почему Плутон оказался не той планетой"
+
+или:
+
+"Как астрономы ошиблись в поисках Планеты X".
+
+Это считается повтором.
+
+==================================================
+ДРАМАТУРГИЯ
+==================================================
+
+Структура:
+
+СЦЕНА 1:
+мощный hook.
+
+СЦЕНЫ 2–3:
+контекст и загадка.
+
+СЦЕНЫ 4–6:
+развитие истории,
+эксперимент,
+открытие или конфликт.
+
+СЦЕНЫ 7–8:
+самый неожиданный факт.
+
+СЦЕНА 9:
+главный вывод или переворот.
+
+СЦЕНА 10:
+сильное завершение,
+которое вызывает комментарии.
+
+==================================================
+HOOK
+==================================================
+
+Первая сцена должна сразу
+создать вопрос или конфликт.
+
+НЕ начинай автоматически с:
+
+"В таком-то году..."
+
+"Учёные обнаружили..."
+
+"Ты когда-нибудь задумывался..."
+
+"Ты думаешь..."
+
+"Представь себе..."
+
+"Мало кто знает..."
+
+Предпочитай:
+
+- неожиданный результат;
+- парадокс;
+- научную ошибку;
+- странное наблюдение;
+- опасное последствие;
+- вопрос без очевидного ответа.
+
+Пример:
+
+ПЛОХО:
+
+"В 1930 году был открыт Плутон."
+
+ХОРОШО:
+
+"Плутон нашли благодаря ошибке.
+И это стало понятно только десятилетия спустя."
+
+==================================================
+ДЛИНА
+==================================================
+
+Ровно 10 сцен.
+
+Общий текст всех сцен:
+
+105–125 русских слов.
+
+Абсолютный максимум:
+
+130 слов.
+
+Целевая длительность озвучки:
+
+50–65 секунд.
+
+Каждая сцена:
+
+примерно 10–14 слов.
+
+Используй короткие,
+динамичные предложения.
+
+Не перегружай сцены деталями.
+
+==================================================
+НАУЧНАЯ ТОЧНОСТЬ
+==================================================
+
+Не превращай популярную легенду
+в доказанный научный факт.
+
+Особенно проверяй:
+
+- даты;
+- имена;
+- причинно-следственные связи;
+- научные открытия;
+- эксперименты;
+- исторические события;
+- заявления "учёные доказали".
+
+Не используй абсолютные формулировки,
+если они могут быть неточными.
+
+Избегай:
+
+"учёные доказали, что..."
+
+"все расчёты были абсолютно неверными"
+
+"это была чистая случайность"
+
+"учёные точно знали"
+
+если это не является бесспорным фактом.
+
+Используй:
+
+"считалось, что..."
+
+"учёные предполагали..."
+
+"позже выяснилось..."
+
+"одна из гипотез..."
+
+"позже стало понятно..."
+
+==================================================
+SEARCH
+==================================================
+
+SEARCH используется только для Pexels.
+
+Используй реальные,
+визуально доступные запросы.
+
+ХОРОШО:
+
+space galaxy stars telescope
+
+scientist laboratory microscope
+
+old newspaper vintage paper
+
+ocean waves storm
+
+animal wildlife nature documentary
+
+human eye macro close up
+
+forest fire smoke
+
+medical laboratory research
+
+ПЛОХО:
+
+alien hologram
+
+magic portal
+
+abstract energy
+
+future technology concept
+
+invisible force
+
+quantum consciousness visualization
+
+Каждый SEARCH должен описывать
+реальный объект, место или действие,
+которое можно найти на Pexels.
+
+Пиши SEARCH только на английском языке.
+
+==================================================
+ФОРМАТ ОТВЕТА
+==================================================
+
+TITLE:
+
+название
+
+TOPIC:
+
+конкретная тема ролика
+
+CORE IDEA:
+
+главная идея ролика одним предложением
+
+USED ENTITIES:
+
+важные люди, объекты, места,
+события или научные концепции,
+через запятую
+
+SCENE 1:
+
+TEXT:
+
+текст
+
+SEARCH:
+
+реальный Pexels запрос
+
+SCENE 2:
+
+TEXT:
+
+текст
+
+SEARCH:
+
+реальный Pexels запрос
+
+...
+
+SCENE 10:
+
+TEXT:
+
+текст
+
+SEARCH:
+
+реальный Pexels запрос
+
+==================================================
+
+ВАЖНО
+==================================================
+
+Не добавляй пояснений.
+
+Не добавляй анализ.
+
+Не добавляй комментарии.
+
+Верни только сценарий.
+"""
 
 
 # =========================================================
-# CREATE SCRIPT
+# GENERATE SCRIPT
 # =========================================================
 
 def create_script():
-
 
     print(
 
@@ -465,92 +936,16 @@ def create_script():
     )
 
 
-    history = load_history()
+    category = random.choice(
 
-
-    history_text = format_history_for_prompt(
-
-        history
+        CATEGORIES
 
     )
 
 
-    # -----------------------------------------------------
-    # Выбираем формат, которого не было недавно
-    # -----------------------------------------------------
+    content_format = random.choice(
 
-    recent_formats = [
-
-        item.get(
-
-            "format"
-
-        )
-
-        for item in history[-3:]
-
-    ]
-
-
-    available_formats = [
-
-        script_format
-
-        for script_format in SCRIPT_FORMATS
-
-        if script_format not in recent_formats
-
-    ]
-
-
-    if not available_formats:
-
-        available_formats = SCRIPT_FORMATS
-
-
-    script_format = random.choice(
-
-        available_formats
-
-    )
-
-
-    # -----------------------------------------------------
-    # Выбираем категорию, которой не было недавно
-    # -----------------------------------------------------
-
-    recent_categories = [
-
-        item.get(
-
-            "category"
-
-        )
-
-        for item in history[-4:]
-
-    ]
-
-
-    available_categories = [
-
-        category
-
-        for category in TOPIC_CATEGORIES
-
-        if category not in recent_categories
-
-    ]
-
-
-    if not available_categories:
-
-        available_categories = TOPIC_CATEGORIES
-
-
-    topic_category = random.choice(
-
-        available_categories
+        FORMATS
 
     )
 
@@ -564,14 +959,14 @@ def create_script():
 
     print(
 
-        f"🎭 Формат: {script_format}"
+        f"🎭 Формат: {content_format}"
 
     )
 
 
     print(
 
-        f"🌍 Категория: {topic_category}"
+        f"🌍 Категория: {category}"
 
     )
 
@@ -583,471 +978,136 @@ def create_script():
     )
 
 
-    # =====================================================
-    # PROMPT
-    # =====================================================
+    history_context = get_history_context()
 
-    prompt = f"""
 
-Ты профессиональный сценарист научно-популярных
-YouTube Shorts.
+    prompt = build_prompt(
 
-Создай один уникальный сценарий для вертикального
-видео длительностью около 60 секунд.
+        category,
 
-==================================================
-ТЕКУЩИЕ ПАРАМЕТРЫ
-==================================================
+        content_format,
 
-КАТЕГОРИЯ:
+        emotion,
 
-{topic_category}
+        history_context
 
+    )
 
-ФОРМАТ:
 
-{script_format}
+    max_attempts = 3
 
 
-ЭМОЦИЯ:
+    for attempt in range(
 
-{emotion}
+        max_attempts
 
+    ):
 
-==================================================
-ИСТОРИЯ ПРЕДЫДУЩИХ ВИДЕО
-==================================================
 
-{history_text}
+        print(
 
+            f"\n🔄 Попытка генерации "
+            f"{attempt + 1}/{max_attempts}"
 
-==================================================
-ГЛАВНАЯ ЗАДАЧА
-==================================================
+        )
 
-Выбери НОВУЮ конкретную научную тему внутри
-указанной категории.
 
-Тема не должна повторять:
+        for model in MODELS:
 
-- предыдущие темы;
-- предыдущие научные открытия;
-- предыдущие эксперименты;
-- предыдущие события;
-- предыдущие основные идеи.
 
-Нельзя просто взять старую тему и рассказать её
-другими словами.
+            try:
 
-Если в истории уже было видео про мозг, память,
-восприятие или сознание, не создавай новое видео
-на ту же основную идею.
+                print(
 
-==================================================
-РАЗНООБРАЗИЕ
-==================================================
+                    f"Пробуем модель: {model}"
 
-Не используй постоянно структуру:
+                )
 
-"Ты думаешь X,
-но на самом деле Y,
-твой мозг скрывает правду,
-а теперь задумайся".
 
-ЗАПРЕЩЕНО:
+                response = client.models.generate_content(
 
-- начинать каждый ролик со слова "Ты";
-- постоянно использовать "На самом деле";
-- постоянно говорить о мозге;
-- постоянно противопоставлять "ты" и "твой мозг";
-- постоянно использовать философские вопросы;
-- постоянно заканчивать "Напиши в комментариях";
-- повторять одну мысль разными словами;
-- использовать одинаковый тип hook в каждом видео.
+                    model=model,
 
-Каждая сцена должна добавлять новую информацию.
+                    contents=prompt
 
-==================================================
-ФОРМАТЫ
-==================================================
+                )
 
-SCIENTIFIC_SHOCK:
 
-Начни с неожиданного научного факта.
-Объясни механизм.
-Покажи последствия.
-Заверши выводом, который меняет восприятие
-явления.
+                text = response.text.strip()
 
 
-THOUGHT_EXPERIMENT:
+                print(
 
-Предложи зрителю представить необычную
-ситуацию.
-Постепенно объясни научные последствия.
-Развивай идею от простого к сложному.
-Заверши парадоксальным выводом.
+                    "\n📄 Получен сценарий:\n"
 
+                )
 
-REAL_EXPERIMENT:
 
-Расскажи о реальном научном эксперименте.
-Объясни, что сделали учёные.
-Покажи неожиданный результат.
-Расскажи, чему эксперимент научил.
+                print(text)
 
 
-MYTH_BUSTING:
+                print(
 
-Начни с распространённого убеждения.
-Покажи, почему оно может быть ошибочным.
-Объясни научную реальность.
-Заверши неожиданным фактом.
+                    "\n🔍 Проверка сценария..."
 
+                )
 
-HIDDEN_MECHANISM:
 
-Возьми обычное явление из повседневной жизни.
-Покажи скрытый механизм.
-Постепенно раскрой его.
-Сделай обычное явление необычным.
+                if validate_script(text):
 
 
-HISTORICAL_DISCOVERY:
+                    topic_data = extract_topic_data(
 
-Расскажи историю реального научного открытия.
-Покажи проблему, случайность или неожиданное
-наблюдение.
-Раскрой момент открытия.
-Покажи его значение.
+                        text,
 
+                        category,
 
-FUTURE_SCENARIO:
+                        content_format,
 
-Опиши реалистичный научный сценарий будущего.
-Покажи, как открытие или технология может изменить
-жизнь.
-Раскрой неожиданные последствия.
+                        emotion
 
+                    )
 
-DARK_QUESTION:
 
-Начни с тревожной научной загадки.
-Постепенно раскрой известные факты.
-Не давай простого ответа.
-Оставь сильную мысль в финале.
+                    save_history(
 
+                        topic_data
 
-==================================================
-НАУЧНАЯ ДОСТОВЕРНОСТЬ
-==================================================
+                    )
 
-Используй реальные научные факты.
 
-Не выдумывай:
+                    return text
 
-- исследования;
-- эксперименты;
-- учёных;
-- исторические события;
-- научные открытия.
 
-Если факт часто пересказывается упрощённо,
-используй осторожную формулировку.
+                print(
 
-Не выдавай популярную легенду за доказанный факт.
+                    "\n⚠️ Сценарий не прошёл проверку."
 
-==================================================
-SEARCH
-==================================================
+                )
 
-SEARCH должен быть только для Pexels.
 
-Используй реальные визуальные объекты,
-людей, места, животных, лаборатории и природные
-явления, которые реально можно найти на Pexels.
+                print(
 
-ХОРОШО:
+                    "🔁 Генерируем новый вариант..."
 
-space galaxy stars telescope
+                )
 
-scientist laboratory microscope
 
-laboratory Petri dish bacteria science
+                break
 
-ocean waves storm
 
-volcano eruption nature
+            except Exception as e:
 
-animals nature documentary
+                print(
 
-human eye macro close up
+                    f"Ошибка модели {model}: {e}"
 
-robot artificial intelligence computer
-
-old scientific notes handwriting paper
-
-medical laboratory glass flasks
-
-clock time lapse
-
-forest wildlife nature
-
-underwater deep ocean
-
-ПОПАДАЕТСЯ ПЛОХО:
-
-alien hologram
-
-magic portal
-
-abstract energy
-
-mysterious cosmic power
-
-digital consciousness
-
-invisible force
-
-quantum energy visualisation
-
-SEARCH должен описывать конкретный
-визуальный объект или действие.
-
-==================================================
-СЦЕНАРИЙ
-==================================================
-
-- ровно 10 сцен;
-- около 60 секунд;
-- первая сцена — сильный hook;
-- каждая следующая сцена развивает историю;
-- каждая сцена содержит новую информацию;
-- финал должен соответствовать выбранному формату;
-- призыв к комментариям использовать только если
-  он действительно естественен.
-
-==================================================
-ФОРМАТ ОТВЕТА
-==================================================
-
-TITLE:
-
-название
-
-
-TOPIC:
-
-конкретная тема ролика
-
-
-SCENE 1:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 2:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 3:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 4:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 5:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 6:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 7:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 8:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 9:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-SCENE 10:
-
-TEXT:
-
-текст
-
-SEARCH:
-
-запрос
-
-
-Не добавляй никаких пояснений
-до или после сценария.
-"""
-
-
-    # =====================================================
-    # GENERATION
-    # =====================================================
-
-    for model in MODELS:
-
-
-        try:
-
-
-            print(
-
-                f"Пробуем модель: {model}"
-
-            )
-
-
-            response = client.models.generate_content(
-
-                model=model,
-
-                contents=prompt
-
-            )
-
-
-            text = response.text
-
-
-            print(
-
-                "\n📄 Получен сценарий:\n"
-
-            )
-
-
-            print(
-
-                text
-
-            )
-
-
-            # ---------------------------------------------
-            # Сохраняем историю только после успешной
-            # генерации
-            # ---------------------------------------------
-
-            title = extract_title(
-
-                text
-
-            )
-
-
-            topic = extract_topic(
-
-                text
-
-            )
-
-
-            save_history(
-
-                title=title,
-
-                category=topic_category,
-
-                script_format=script_format,
-
-                emotion=emotion,
-
-                topic=topic
-
-            )
-
-
-            return text
-
-
-        except Exception as e:
-
-
-            print(
-
-                f"Ошибка модели {model}: {e}"
-
-            )
+                )
 
 
     raise Exception(
 
-        "Нет доступных моделей"
+        "❌ Не удалось создать "
+        "корректный сценарий"
 
     )
