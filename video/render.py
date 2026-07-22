@@ -10,11 +10,11 @@ from moviepy import (
     VideoFileClip,
     AudioFileClip,
     concatenate_videoclips,
-    CompositeVideoClip
+    CompositeVideoClip,
+    vfx
 )
 
 from moviepy.video.fx import Crop
-
 
 from video.subtitles import create_subtitle
 from video.music import add_background_music
@@ -25,6 +25,7 @@ from video.music_downloader import download_music
 from ai.music_selector import select_music_style
 
 from audio.whisper import transcribe_audio
+
 
 load_dotenv()
 
@@ -52,10 +53,9 @@ WIDTH = 1080
 HEIGHT = 1920
 
 
-
-# ==========================
+# =========================================================
 # VOICE
-# ==========================
+# =========================================================
 
 async def create_voice(text, filename):
 
@@ -78,12 +78,9 @@ async def create_voice(text, filename):
     )
 
 
-
-
-
-# ==========================
+# =========================================================
 # SEARCH PEXELS
-# ==========================
+# =========================================================
 
 def search_video(query, index):
 
@@ -128,13 +125,18 @@ def search_video(query, index):
     )
 
 
+    response.raise_for_status()
+
+
     data = response.json()
 
 
     if not data.get("videos"):
 
         raise Exception(
+
             f"Видео не найдено: {query}"
+
         )
 
 
@@ -142,7 +144,9 @@ def search_video(query, index):
 
 
     video = random.choice(
+
         videos[:10]
+
     )
 
 
@@ -151,7 +155,9 @@ def search_video(query, index):
 
     files = [
 
-        f for f in files
+        f
+
+        for f in files
 
         if f.get("width", 0) >= 720
 
@@ -163,12 +169,17 @@ def search_video(query, index):
         files = video["video_files"]
 
 
-
     file = max(
 
         files,
 
-        key=lambda x: x.get("width", 0)
+        key=lambda x: x.get(
+
+            "width",
+
+            0
+
+        )
 
     )
 
@@ -177,7 +188,16 @@ def search_video(query, index):
 
 
     filename = (
+
         f"{TEMP_DIR}/clip_{index}.mp4"
+
+    )
+
+
+    print(
+
+        f"⬇ Загружаю видео {index}"
+
     )
 
 
@@ -190,45 +210,78 @@ def search_video(query, index):
     ).content
 
 
-    with open(filename, "wb") as f:
+    with open(
+
+        filename,
+
+        "wb"
+
+    ) as f:
 
         f.write(content)
 
 
     print(
-        f"⬇ Загружено видео {index}"
+
+        f"✅ Видео {index} загружено"
+
     )
 
 
     return filename
 
 
-
-
-
-# ==========================
+# =========================================================
 # PREPARE CLIP
-# ==========================
+# =========================================================
 
-def prepare_clip(filename, duration):
+def prepare_clip(
 
+        filename,
 
-    clip = VideoFileClip(
-        filename
+        duration,
+
+        clip_index=0
+
+):
+
+    print(
+
+        f"🎬 Обработка клипа {clip_index}"
+
     )
 
 
+    clip = VideoFileClip(
+
+        filename
+
+    )
+
+
+    # -----------------------------------------------------
+    # RESIZE
+    # -----------------------------------------------------
+
     clip = clip.resized(
+
         height=HEIGHT
+
     )
 
 
     if clip.w < WIDTH:
 
         clip = clip.resized(
+
             width=WIDTH
+
         )
 
+
+    # -----------------------------------------------------
+    # CROP TO 9:16
+    # -----------------------------------------------------
 
     clip = Crop(
 
@@ -241,32 +294,22 @@ def prepare_clip(filename, duration):
         y_center=clip.h / 2
 
     ).apply(
+
         clip
+
     )
 
 
-    # оставляем твой zoom эффект
-
-    try:
-
-        clip = clip.resized(
-
-            lambda t:
-
-            1 + (0.02 * t)
-
-        )
-
-    except:
-
-        pass
-
-
+    # -----------------------------------------------------
+    # DURATION
+    # -----------------------------------------------------
 
     if clip.duration < duration:
 
         clip = clip.with_duration(
+
             duration
+
         )
 
     else:
@@ -280,74 +323,160 @@ def prepare_clip(filename, duration):
         )
 
 
+    # -----------------------------------------------------
+    # CINEMATIC ZOOM
+    # -----------------------------------------------------
+
+    try:
+
+        clip = clip.resized(
+
+            lambda t:
+
+            1 + (
+
+                0.015 * t
+
+            )
+
+        )
+
+    except Exception:
+
+        pass
+
+
+    # -----------------------------------------------------
+    # FADE IN / FADE OUT
+    # -----------------------------------------------------
+
+    fade_time = min(
+
+        0.25,
+
+        duration / 5
+
+    )
+
+
+    try:
+
+        clip = clip.with_effects(
+
+            [
+
+                vfx.FadeIn(
+
+                    fade_time
+
+                ),
+
+                vfx.FadeOut(
+
+                    fade_time
+
+                )
+
+            ]
+
+        )
+
+    except Exception:
+
+        pass
+
+
     return clip
 
 
-
-# ==========================
+# =========================================================
 # CREATE VIDEO
-# ==========================
+# =========================================================
 
 def create_video(
+
         scenes,
+
         music_style=None
+
 ):
 
-
     print(
+
         "🎙 Создание голоса"
+
     )
 
 
     voice_file = (
+
         f"{TEMP_DIR}/voice.mp3"
+
     )
 
 
     texts = [
 
-        s["text"]
+        scene["text"]
 
-        for s in scenes
+        for scene in scenes
 
     ]
 
 
+    # =====================================================
+    # FULL TEXT
+    # =====================================================
 
-    # ==========================
-    # AUTO MUSIC SEARCH
-    # ==========================
+    full_text = (
+
+        " ".join(texts)
+
+    )
 
 
-    full_text = " ".join(texts)
-
+    # =====================================================
+    # AI MUSIC SELECTION
+    # =====================================================
 
     music_file = None
 
 
     music_query = select_music_style(
+
         full_text
+
     )
 
 
     print(
-        f"🎼 Определён стиль музыки: {music_query}"
+
+        f"🎼 Определён стиль музыки: "
+
+        f"{music_query}"
+
     )
 
 
     track = search_music(
+
         music_query
+
     )
 
 
     if track:
 
         music_file = download_music(
+
             track
+
         )
 
 
-
+    # =====================================================
+    # CREATE VOICE
+    # =====================================================
 
     asyncio.run(
 
@@ -362,26 +491,56 @@ def create_video(
     )
 
 
-
     audio = AudioFileClip(
+
         voice_file
+
     )
+
+
+    # =====================================================
+    # WHISPER
+    # =====================================================
+
+    print(
+
+        "🗣 Whisper анализирует речь"
+
+    )
+
 
     words = transcribe_audio(
+
         voice_file
+
     )
 
 
-    total_duration = audio.duration
+    total_duration = (
+
+        audio.duration
+
+    )
 
 
     print(
-        f"⏱ Длина голоса: {total_duration:.2f} сек"
+
+        f"⏱ Длина голоса: "
+
+        f"{total_duration:.2f} сек"
+
     )
 
 
+    # =====================================================
+    # VIDEO SEGMENTS
+    # =====================================================
 
-    amount = len(scenes) * 2
+    amount = (
+
+        len(scenes) * 2
+
+    )
 
 
     clip_duration = (
@@ -391,7 +550,6 @@ def create_video(
     )
 
 
-
     clips = []
 
 
@@ -399,14 +557,17 @@ def create_video(
 
 
     print(
-        "🎥 Поиск видео"
-    )
 
+        "🎥 Поиск видео"
+
+    )
 
 
     for scene in scenes:
 
+
         for part in range(2):
+
 
             video_file = search_video(
 
@@ -421,23 +582,31 @@ def create_video(
 
                 video_file,
 
-                clip_duration
+                clip_duration,
+
+                counter
 
             )
 
 
             clips.append(
+
                 clip
+
             )
 
 
             counter += 1
 
 
-
+    # =====================================================
+    # CONCATENATE VIDEO
+    # =====================================================
 
     print(
+
         "✂️ Склейка сцен"
+
     )
 
 
@@ -449,27 +618,46 @@ def create_video(
 
     )
 
-    print(
-        "💬 Добавление субтитров"
-    )
-    
-    
-    subtitle_layer = create_subtitle(
-        words
-    )
-    
-    
-    final = CompositeVideoClip(
-    
-        [
-            final,
-            *subtitle_layer
-        ]
-    
-    )
+
+    # =====================================================
+    # SUBTITLES
+    # =====================================================
 
     print(
+
+        "💬 Добавление субтитров"
+
+    )
+
+
+    subtitle_layer = create_subtitle(
+
+        words
+
+    )
+
+
+    final = CompositeVideoClip(
+
+        [
+
+            final,
+
+            *subtitle_layer
+
+        ]
+
+    )
+
+
+    # =====================================================
+    # BACKGROUND MUSIC
+    # =====================================================
+
+    print(
+
         "🎵 Добавление музыки"
+
     )
 
 
@@ -479,7 +667,15 @@ def create_video(
 
         total_duration,
 
-        style=music_file if music_file else "dark",
+        style=(
+
+            music_file
+
+            if music_file
+
+            else "dark"
+
+        ),
 
         volume=0.12
 
@@ -487,18 +683,27 @@ def create_video(
 
 
     final = final.with_audio(
+
         final_audio
+
     )
 
 
+    # =====================================================
+    # OUTPUT
+    # =====================================================
 
     output = (
+
         f"{OUTPUT_DIR}/short.mp4"
+
     )
 
 
     print(
+
         "💾 Рендер"
+
     )
 
 
@@ -522,5 +727,10 @@ def create_video(
 
 
     print(
+
         f"✅ Готово: {output}"
+
     )
+
+
+    return output
