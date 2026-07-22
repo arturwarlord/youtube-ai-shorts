@@ -1,34 +1,26 @@
 name: AI Shorts Generator
 
-
 on:
 
   workflow_dispatch:
-
 
   schedule:
 
     - cron: "0 9 * * *"
 
 
-
 jobs:
 
-
   generate:
-
 
     runs-on: ubuntu-latest
 
 
-
     steps:
-
 
     - name: Download project
 
       uses: actions/checkout@v4
-
 
 
     - name: Install Python
@@ -40,7 +32,6 @@ jobs:
         python-version: "3.11"
 
 
-
     - name: Install ffmpeg
 
       run: |
@@ -50,13 +41,22 @@ jobs:
         sudo apt-get install -y ffmpeg
 
 
-
     - name: Install packages
 
       run: |
 
         pip install -r requirements.txt
 
+
+    - name: Create YouTube token
+
+      env:
+
+        YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
+
+      run: |
+
+        echo "$YOUTUBE_TOKEN" > token.json
 
 
     - name: Run AI
@@ -73,7 +73,6 @@ jobs:
       run:
 
         python main.py
-
 
 
     - name: Save video
