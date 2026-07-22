@@ -7,7 +7,6 @@ MODEL = None
 MODEL_NAME = "tiny"
 
 
-
 # ==========================
 # LOAD MODEL
 # ==========================
@@ -23,15 +22,24 @@ def get_model():
             "🧠 Загрузка Whisper модели..."
         )
 
+
         MODEL = whisper.load_model(
+
             MODEL_NAME
+
+        )
+
+
+        print(
+
+            f"✅ Whisper модель загружена: "
+
+            f"{MODEL_NAME}"
+
         )
 
 
     return MODEL
-
-
-
 
 
 # ==========================
@@ -39,7 +47,9 @@ def get_model():
 # ==========================
 
 def transcribe_audio(
+
         audio_file
+
 ):
 
 
@@ -47,7 +57,9 @@ def transcribe_audio(
 
 
     print(
+
         "🎧 Распознавание голоса..."
+
     )
 
 
@@ -64,51 +76,62 @@ def transcribe_audio(
     )
 
 
-
     words = []
 
 
-
     for segment in result.get(
+
         "segments",
+
         []
+
     ):
 
 
         for item in segment.get(
+
             "words",
+
             []
+
         ):
 
 
             word = item.get(
+
                 "word",
+
                 ""
+
             ).strip()
 
 
-
             start = item.get(
+
                 "start",
+
                 None
+
             )
 
 
             end = item.get(
+
                 "end",
+
                 None
+
             )
 
 
-
             if not word:
-                continue
 
+                continue
 
 
             if start is None or end is None:
-                continue
 
+                continue
 
 
             words.append(
@@ -126,23 +149,29 @@ def transcribe_audio(
             )
 
 
-
     print(
-        f"✅ Найдено слов: {len(words)}"
-    )
 
+        f"✅ Найдено слов: "
+
+        f"{len(words)}"
+
+    )
 
 
     if words:
 
         print(
+
             "🔤 Пример:"
+
         )
+
 
         print(
-            words[:5]
-        )
 
+            words[:5]
+
+        )
 
 
     return words
