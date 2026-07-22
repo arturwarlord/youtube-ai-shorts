@@ -4,7 +4,7 @@ import whisper
 MODEL = None
 
 
-MODEL_NAME = "base"
+MODEL_NAME = "tiny"
 
 
 
