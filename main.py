@@ -5,7 +5,7 @@ from ai.parser import parse_scenes
 from ai.metadata import generate_metadata
 
 from video.render import create_video
-
+from video.thumbnail import create_thumbnail
 
 
 load_dotenv()
