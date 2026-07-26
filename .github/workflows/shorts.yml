@@ -16,84 +16,125 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # Максимальное время выполнения job
+    timeout-minutes: 30
+
 
     steps:
 
 
-    - name: Download project
+      # ==========================
+      # DOWNLOAD PROJECT
+      # ==========================
 
-      uses: actions/checkout@v4
+      - name: Download project
 
-
-    - name: Install Python
-
-      uses: actions/setup-python@v5
-
-      with:
-
-        python-version: "3.11"
+        uses: actions/checkout@v4
 
 
-    - name: Install ffmpeg
+      # ==========================
+      # PYTHON
+      # ==========================
 
-      run: |
+      - name: Install Python
 
-        sudo apt-get update
+        uses: actions/setup-python@v5
 
-        sudo apt-get install -y ffmpeg
+        with:
 
+          python-version: "3.11"
 
-    - name: Cache Whisper model
-
-      uses: actions/cache@v4
-
-      with:
-
-        path: ~/.cache/whisper
-
-        key: whisper-base-v1
+          cache: "pip"
 
 
-    - name: Install packages
+      # ==========================
+      # FFMPEG
+      # ==========================
 
-      run: |
+      - name: Install ffmpeg
 
-        pip install -r requirements.txt
+        run: |
 
+          sudo apt-get update
 
-    - name: Create YouTube token
-
-      env:
-
-        YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
-
-      run: |
-
-        echo "$YOUTUBE_TOKEN" > token.json
+          sudo apt-get install -y ffmpeg
 
 
-    - name: Run AI
+      # ==========================
+      # WHISPER CACHE
+      # ==========================
 
-      env:
+      - name: Cache Whisper model
 
-        GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+        uses: actions/cache@v4
 
-        PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+        with:
 
-        FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+          path: ~/.cache/whisper
 
-
-      run:
-
-        python main.py
+          key: whisper-tiny-v1
 
 
-    - name: Save video
+      # ==========================
+      # PYTHON PACKAGES
+      # ==========================
 
-      uses: actions/upload-artifact@v4
+      - name: Install packages
 
-      with:
+        run: |
 
-        name: youtube-short
+          python -m pip install --upgrade pip
 
-        path: output/short.mp4
+          pip install -r requirements.txt
+
+
+      # ==========================
+      # YOUTUBE TOKEN
+      # ==========================
+
+      - name: Create YouTube token
+
+        env:
+
+          YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
+
+        run: |
+
+          echo "$YOUTUBE_TOKEN" > token.json
+
+
+      # ==========================
+      # RUN AI SHORTS GENERATOR
+      # ==========================
+
+      - name: Run AI
+
+        env:
+
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+
+
+        run: |
+
+          python main.py
+
+
+      # ==========================
+      # SAVE VIDEO
+      # ==========================
+
+      - name: Save video
+
+        uses: actions/upload-artifact@v4
+
+        with:
+
+          name: youtube-short
+
+          path: output/short.mp4
+
+          if-no-files-found: error
