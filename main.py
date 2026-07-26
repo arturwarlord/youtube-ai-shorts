@@ -74,6 +74,14 @@ def main():
         scenes
     )
 
+    # ==========================
+    # THUMBNAIL
+    # ==========================
+
+    thumbnail_path = create_thumbnail(
+        video_path="output/short.mp4",
+        title=metadata["title"]
+    )
 
 
     print(
