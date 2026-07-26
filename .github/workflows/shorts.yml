@@ -16,7 +16,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Максимальное время выполнения job
     timeout-minutes: 30
 
 
@@ -89,21 +88,6 @@ jobs:
 
 
       # ==========================
-      # YOUTUBE TOKEN
-      # ==========================
-
-      - name: Create YouTube token
-
-        env:
-
-          YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
-
-        run: |
-
-          echo "$YOUTUBE_TOKEN" > token.json
-
-
-      # ==========================
       # RUN AI SHORTS GENERATOR
       # ==========================
 
@@ -117,6 +101,8 @@ jobs:
 
           FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
 
+          YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
+
 
         run: |
 
@@ -124,10 +110,10 @@ jobs:
 
 
       # ==========================
-      # SAVE VIDEO
+      # SAVE VIDEO AND THUMBNAIL
       # ==========================
 
-      - name: Save video
+      - name: Save generated files
 
         uses: actions/upload-artifact@v4
 
@@ -135,6 +121,10 @@ jobs:
 
           name: youtube-short
 
-          path: output/short.mp4
+          path: |
+
+            output/short.mp4
+
+            output/thumbnail.jpg
 
           if-no-files-found: error
