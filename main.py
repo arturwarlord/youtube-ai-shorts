@@ -6,7 +6,7 @@ from ai.metadata import generate_metadata
 
 from video.render import create_video
 from video.thumbnail import create_thumbnail
-
+from youtube.upload import upload_video
 
 load_dotenv()
 
@@ -81,6 +81,31 @@ def main():
     thumbnail_path = create_thumbnail(
         video_path="output/short.mp4",
         title=metadata["title"]
+    )
+
+    # ==========================
+    # YOUTUBE UPLOAD
+    # ==========================
+
+    print(
+        "\n📤 Публикация на YouTube..."
+    )
+
+
+    upload_video(
+
+        video_path="output/short.mp4",
+
+        thumbnail_path=thumbnail_path,
+
+        title=metadata["title"],
+
+        description=metadata["description"],
+
+        hashtags=metadata["hashtags"],
+
+        tags=metadata["tags"]
+
     )
 
 
