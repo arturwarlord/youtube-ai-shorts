@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 from ai.script import create_script
 from ai.parser import parse_scenes
+from ai.metadata import generate_metadata
 
 from video.render import create_video
 
@@ -25,7 +26,13 @@ def main():
 
     script = create_script()
 
+    # ==========================
+    # METADATA
+    # ==========================
 
+    metadata = generate_metadata(
+        script
+    )
 
     # ==========================
     # PARSE
