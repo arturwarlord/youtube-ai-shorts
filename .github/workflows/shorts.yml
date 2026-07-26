@@ -8,7 +8,9 @@ on:
   schedule:
 
     - cron: "0 9 * * *"
-
+    - cron: "0 15 * * *"
+    - cron: "0 21 * * *"
+  
 jobs:
 
   generate:
