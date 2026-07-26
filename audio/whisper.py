@@ -1,10 +1,20 @@
+import gc
+
 import whisper
 
 
-MODEL = None
-
+# ==========================
+# CONFIG
+# ==========================
 
 MODEL_NAME = "tiny"
+
+
+# ==========================
+# GLOBAL MODEL CACHE
+# ==========================
+
+MODEL = None
 
 
 # ==========================
@@ -23,6 +33,10 @@ def get_model():
         )
 
 
+        # Освобождаем неиспользуемую память
+        gc.collect()
+
+
         MODEL = whisper.load_model(
 
             MODEL_NAME
@@ -33,7 +47,6 @@ def get_model():
         print(
 
             f"✅ Whisper модель загружена: "
-
             f"{MODEL_NAME}"
 
         )
@@ -51,7 +64,6 @@ def transcribe_audio(
         audio_file
 
 ):
-
 
     model = get_model()
 
@@ -71,7 +83,9 @@ def transcribe_audio(
 
         word_timestamps=True,
 
-        fp16=False
+        fp16=False,
+
+        temperature=0
 
     )
 
@@ -152,7 +166,6 @@ def transcribe_audio(
     print(
 
         f"✅ Найдено слов: "
-
         f"{len(words)}"
 
     )
