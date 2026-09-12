@@ -1,4 +1,3 @@
-```python
 import subprocess
 from pathlib import Path
 
@@ -127,5 +126,4 @@ def extract_audio(video_path, audio_path):
     print("✅ Audio extracted")
 
     return str(audio_path)
-```
 
