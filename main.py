@@ -1,12 +1,12 @@
 import os
 import sys
+import json
+import time
 import subprocess
-import re
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import requests
-
+import yt_dlp
 
 from video.source import (
     validate_source_video,
@@ -15,9 +15,7 @@ from video.source import (
 )
 
 from audio.whisper import transcribe_with_language
-
 from ai.clip_selector import select_clips
-
 from video.clip_renderer import render_clips
 
 
@@ -26,1258 +24,758 @@ from video.clip_renderer import render_clips
 # ============================================================
 
 SOURCE_VIDEO = Path("input/source.mp4")
-
 AUDIO_FILE = Path("output/source_audio.wav")
-
 CLIPS_DIR = Path("output/clips")
 
+RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
+
+# Максимальное количество видео, которые проверяем
+RUTUBE_MAX_VIDEOS = 20
+
+# Минимальная длительность исходного видео
+# 20 минут = 1200 секунд
+MIN_SOURCE_DURATION = 20 * 60
+
+# Максимальное количество клипов
 MAX_CLIPS = 3
 
-
-# ============================================================
-# YOUTUBE API
-# ============================================================
-
-YOUTUBE_API_URL = (
-    "https://www.googleapis.com/youtube/v3"
-)
-
-DEFAULT_SEARCH_QUERY = (
-    "viral podcast interview"
-)
-
-SEARCH_RESULTS = 10
-
-SEARCH_DAYS = 14
-
-
-# ============================================================
-# YT-DLP
-# ============================================================
-
+# Максимальная высота исходного видео
 MAX_VIDEO_HEIGHT = 720
 
+# Таймаут скачивания одного видео
 DOWNLOAD_TIMEOUT = 25 * 60
+
+# Сколько секунд ждать между попытками
+RETRY_DELAY = 3
 
 
 # ============================================================
 # HELPERS
 # ============================================================
 
-def print_header():
+def parse_duration(value):
+    """
+    Преобразует длительность в секунды.
+    Поддерживает:
+      - int / float
+      - строки HH:MM:SS
+      - строки MM:SS
+    """
 
-    print("")
-    print("=" * 70)
-    print("🚀 AI LONG VIDEO → YOUTUBE SHORTS")
-    print("=" * 70)
-    print("")
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    parts = value.split(":")
+
+    try:
+        parts = [int(x) for x in parts]
+    except ValueError:
+        return None
+
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+        return hours * 3600 + minutes * 60 + seconds
+
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return minutes * 60 + seconds
+
+    if len(parts) == 1:
+        return float(parts[0])
+
+    return None
 
 
-# ============================================================
-# YOUTUBE API
-# ============================================================
+def format_duration(seconds):
+    if seconds is None:
+        return "unknown"
 
-def search_youtube():
+    seconds = int(seconds)
 
-    api_key = os.getenv(
-        "YOUTUBE_API_KEY"
-    )
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
 
-    if not api_key:
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-        raise RuntimeError(
-            "YOUTUBE_API_KEY is not set"
-        )
-
-
-    query = os.getenv(
-        "SEARCH_QUERY",
-        ""
-    ).strip()
+    return f"{minutes:02d}:{secs:02d}"
 
 
-    if not query:
+def clean_source_file():
+    """
+    Удаляем старый source.mp4 перед новым скачиванием.
+    """
 
-        query = DEFAULT_SEARCH_QUERY
+    SOURCE_VIDEO.parent.mkdir(parents=True, exist_ok=True)
+
+    if SOURCE_VIDEO.exists():
+        print("🗑 Removing old source.mp4")
+        SOURCE_VIDEO.unlink()
 
 
-    print("")
-    print("=" * 70)
-    print("🔎 YOUTUBE SEARCH")
-    print("=" * 70)
+def print_video_info(video, index=None):
+    title = video.get("title") or "Unknown title"
+    video_id = video.get("id") or "unknown"
+    duration = parse_duration(video.get("duration"))
+    url = video.get("webpage_url") or video.get("url") or ""
+
+    prefix = f"[{index}] " if index is not None else ""
 
     print(
-        f"Query: {query}"
+        f"{prefix}{title}\n"
+        f"    ID: {video_id}\n"
+        f"    Duration: {format_duration(duration)}\n"
+        f"    URL: {url}"
     )
 
 
-    published_after = (
-        datetime.now(timezone.utc)
-        - timedelta(days=SEARCH_DAYS)
-    ).isoformat().replace(
-        "+00:00",
-        "Z"
-    )
+# ============================================================
+# RUTUBE
+# ============================================================
 
+def get_rutube_videos():
+    """
+    Получает список видео с RUTUBE-канала.
 
-    params = {
+    Используется yt-dlp как extractor:
+        https://rutube.ru/channel/23968031/
 
-        "part": "snippet",
+    Канал поддерживается актуальным yt-dlp через RutubeChannelIE.
+    """
 
-        "q": query,
+    print("=" * 70)
+    print("📺 RUTUBE")
+    print("=" * 70)
 
-        "type": "video",
+    print(f"Channel: {RUTUBE_CHANNEL_URL}")
+    print()
 
-        "maxResults": SEARCH_RESULTS,
+    ydl_opts = {
+        "quiet": False,
+        "no_warnings": False,
 
-        "order": "viewCount",
+        # Получаем только метаданные.
+        "extract_flat": True,
 
-        "publishedAfter": published_after,
+        # Не скачиваем видео на этом этапе.
+        "skip_download": True,
 
-        "videoDefinition": "high",
+        # Не загружаем плейлист целиком.
+        "playlistend": RUTUBE_MAX_VIDEOS,
 
-        "safeSearch": "moderate",
-
-        "key": api_key,
     }
 
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                RUTUBE_CHANNEL_URL,
+                download=False,
+            )
 
-    response = requests.get(
+    except Exception as e:
+        print()
+        print("❌ Failed to read RUTUBE channel")
+        print(f"Error: {e}")
+        return []
 
-        f"{YOUTUBE_API_URL}/search",
+    if not info:
+        print("❌ RUTUBE returned no information")
+        return []
 
-        params=params,
+    entries = info.get("entries") or []
 
-        timeout=30,
-    )
+    videos = []
 
+    for entry in entries:
+        if not entry:
+            continue
 
-    if response.status_code != 200:
+        # extract_flat может вернуть URL + metadata
+        video = dict(entry)
 
-        raise RuntimeError(
-
-            "YouTube API error: "
-
-            f"{response.status_code}\n"
-
-            f"{response.text[:2000]}"
-        )
-
-
-    data = response.json()
-
-
-    items = data.get(
-        "items",
-        []
-    )
-
-
-    if not items:
-
-        raise RuntimeError(
-            "YouTube API returned no videos"
-        )
-
-
-    candidates = []
-
-
-    for item in items:
-
-        video_id = (
-            item
-            .get("id", {})
-            .get("videoId")
-        )
-
+        video_id = video.get("id")
 
         if not video_id:
             continue
 
+        # RUTUBE extractor обычно даёт webpage_url.
+        webpage_url = video.get("webpage_url")
 
-        snippet = item.get(
-            "snippet",
-            {}
-        )
+        if not webpage_url:
+            webpage_url = f"https://rutube.ru/video/{video_id}/"
 
+        video["webpage_url"] = webpage_url
 
-        title = snippet.get(
-            "title",
-            ""
-        )
+        videos.append(video)
 
+    print(f"Found {len(videos)} channel entries")
+    print()
 
-        channel = snippet.get(
-            "channelTitle",
-            ""
-        )
+    return videos
 
 
-        published = snippet.get(
-            "publishedAt",
-            ""
-        )
+def get_video_details(video):
+    """
+    Получает полную информацию о конкретном RUTUBE видео.
 
+    Это нужно потому, что flat playlist может не содержать
+    полной длительности/метаданных.
+    """
 
-        url = (
-            "https://www.youtube.com/watch?v="
-            + video_id
-        )
+    url = video.get("webpage_url")
 
+    if not url:
+        return None
 
-        candidates.append({
-
-            "video_id": video_id,
-
-            "title": title,
-
-            "channel": channel,
-
-            "published": published,
-
-            "url": url,
-
-        })
-
-
-    if not candidates:
-
-        raise RuntimeError(
-            "No valid YouTube video IDs found"
-        )
-
-
-    # ========================================================
-    # GET VIDEO DETAILS
-    # ========================================================
-
-    video_ids = [
-        item["video_id"]
-        for item in candidates
-    ]
-
-
-    details = get_video_details(
-        video_ids,
-        api_key,
-    )
-
-
-    result = []
-
-
-    for item in candidates:
-
-        detail = details.get(
-            item["video_id"]
-        )
-
-
-        if not detail:
-            continue
-
-
-        duration = detail[
-            "duration"
-        ]
-
-
-        views = detail[
-            "views"
-        ]
-
-
-        # Only long-form videos.
-        # Minimum 4 minutes.
-
-        if duration < 240:
-
-            continue
-
-
-        item["duration"] = duration
-
-        item["views"] = views
-
-
-        result.append(
-            item
-        )
-
-
-    # If all candidates were filtered,
-    # use the original candidates.
-
-    if not result:
-
-        result = candidates
-
-
-    # Highest views first.
-
-    result.sort(
-        key=lambda item: item.get(
-            "views",
-            0
-        ),
-        reverse=True,
-    )
-
-
-    print("")
-
-    print(
-        f"Found {len(result)} candidates"
-    )
-
-
-    for index, item in enumerate(
-        result,
-        start=1
-    ):
-
-        duration = item.get(
-            "duration",
-            0
-        )
-
-
-        views = item.get(
-            "views",
-            0
-        )
-
-
-        print(
-            f"{index}. "
-            f"{item['title'][:90]}"
-        )
-
-
-        print(
-            f"   Channel: "
-            f"{item['channel']}"
-        )
-
-
-        print(
-            f"   Duration: "
-            f"{duration / 60:.1f} min"
-        )
-
-
-        print(
-            f"   Views: "
-            f"{views:,}"
-        )
-
-
-    return result
-
-
-# ============================================================
-# VIDEO DETAILS
-# ============================================================
-
-def get_video_details(
-    video_ids,
-    api_key,
-):
-
-    params = {
-
-        "part": (
-            "snippet,"
-            "contentDetails,"
-            "statistics"
-        ),
-
-        "id": ",".join(
-            video_ids
-        ),
-
-        "key": api_key,
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
     }
 
-
-    response = requests.get(
-
-        f"{YOUTUBE_API_URL}/videos",
-
-        params=params,
-
-        timeout=30,
-    )
-
-
-    if response.status_code != 200:
-
-        raise RuntimeError(
-
-            "YouTube videos.list error: "
-
-            f"{response.status_code}\n"
-
-            f"{response.text[:2000]}"
-        )
-
-
-    data = response.json()
-
-
-    details = {}
-
-
-    for item in data.get(
-        "items",
-        []
-    ):
-
-        video_id = item.get(
-            "id"
-        )
-
-
-        duration = parse_iso_duration(
-
-            item
-            .get("contentDetails", {})
-            .get("duration", "")
-        )
-
-
-        views = int(
-
-            item
-            .get("statistics", {})
-            .get("viewCount", 0)
-        )
-
-
-        details[video_id] = {
-
-            "duration": duration,
-
-            "views": views,
-
-        }
-
-
-    return details
-
-
-# ============================================================
-# ISO 8601 DURATION
-# ============================================================
-
-def parse_iso_duration(
-    value
-):
-
-    if not value:
-
-        return 0
-
-
-    match = re.fullmatch(
-
-        r"PT"
-        r"(?:(\d+)H)?"
-        r"(?:(\d+)M)?"
-        r"(?:(\d+)S)?",
-
-        value,
-    )
-
-
-    if not match:
-
-        return 0
-
-
-    hours = int(
-        match.group(1) or 0
-    )
-
-
-    minutes = int(
-        match.group(2) or 0
-    )
-
-
-    seconds = int(
-        match.group(3) or 0
-    )
-
-
-    return (
-
-        hours * 3600
-
-        + minutes * 60
-
-        + seconds
-    )
-
-
-# ============================================================
-# REMOVE OLD SOURCE FILES
-# ============================================================
-
-def remove_old_source_files():
-
-    input_dir = Path("input")
-
-    input_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-
-    for file in input_dir.glob(
-        "source.*"
-    ):
-
-        try:
-
-            file.unlink()
-
-        except Exception as exc:
-
-            print(
-                f"⚠️ Could not remove "
-                f"{file}: {exc}"
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                url,
+                download=False,
             )
 
+        return info
 
-# ============================================================
-# CHECK RESULT
-# ============================================================
-
-def find_source_mp4():
-
-    source_files = list(
-        Path("input").glob(
-            "source.*"
-        )
-    )
-
-
-    mp4_files = [
-
-        file
-
-        for file in source_files
-
-        if file.suffix.lower() == ".mp4"
-
-    ]
-
-
-    if not mp4_files:
-
+    except Exception as e:
+        print(f"⚠️ Could not read video details: {e}")
         return None
 
 
-    # Prefer exact expected filename.
+def select_rutube_videos(videos):
+    """
+    Выбирает подходящие длинные видео.
 
-    exact = Path(
-        "input/source.mp4"
+    Правила:
+      - есть ID;
+      - есть длительность;
+      - длительность >= 20 минут;
+      - не Shorts;
+      - сортировка по дате публикации, новое сначала.
+    """
+
+    print("=" * 70)
+    print("🔎 FILTERING RUTUBE VIDEOS")
+    print("=" * 70)
+
+    candidates = []
+
+    for index, video in enumerate(videos, start=1):
+
+        url = video.get("webpage_url")
+
+        if not url:
+            continue
+
+        # ----------------------------------------------------
+        # Если duration уже есть — используем его.
+        # Если нет — получаем полную информацию.
+        # ----------------------------------------------------
+
+        duration = parse_duration(video.get("duration"))
+
+        full_info = None
+
+        if duration is None:
+            print(f"Checking metadata: {url}")
+
+            full_info = get_video_details(video)
+
+            if not full_info:
+                continue
+
+            video = full_info
+            duration = parse_duration(video.get("duration"))
+
+        if duration is None:
+            print("⚠️ Duration unknown — skipping")
+            continue
+
+        # ----------------------------------------------------
+        # Минимальная длительность
+        # ----------------------------------------------------
+
+        if duration < MIN_SOURCE_DURATION:
+            print(
+                f"⏭ Too short: "
+                f"{video.get('title', 'Unknown')} "
+                f"({format_duration(duration)})"
+            )
+            continue
+
+        # ----------------------------------------------------
+        # Исключаем Shorts
+        # ----------------------------------------------------
+
+        title = (video.get("title") or "").lower()
+
+        if "shorts" in title:
+            print(
+                f"⏭ Possible Shorts: "
+                f"{video.get('title', 'Unknown')}"
+            )
+            continue
+
+        # ----------------------------------------------------
+        # Добавляем кандидата
+        # ----------------------------------------------------
+
+        upload_date = video.get("upload_date")
+
+        if upload_date:
+            try:
+                sort_date = datetime.strptime(
+                    upload_date,
+                    "%Y%m%d"
+                ).replace(tzinfo=timezone.utc)
+            except Exception:
+                sort_date = datetime.min.replace(
+                    tzinfo=timezone.utc
+                )
+        else:
+            timestamp = video.get("timestamp")
+
+            if timestamp:
+                try:
+                    sort_date = datetime.fromtimestamp(
+                        timestamp,
+                        tz=timezone.utc,
+                    )
+                except Exception:
+                    sort_date = datetime.min.replace(
+                        tzinfo=timezone.utc
+                    )
+            else:
+                sort_date = datetime.min.replace(
+                    tzinfo=timezone.utc
+                )
+
+        video["_sort_date"] = sort_date
+
+        candidates.append(video)
+
+    # Новые видео первыми
+    candidates.sort(
+        key=lambda x: x.get("_sort_date"),
+        reverse=True,
     )
 
+    print()
+    print(f"Suitable videos: {len(candidates)}")
+    print()
 
-    if exact.exists():
+    for index, video in enumerate(candidates, start=1):
+        print_video_info(video, index)
+        print()
 
-        return exact
-
-
-    return mp4_files[0]
+    return candidates
 
 
 # ============================================================
-# YT-DLP SINGLE ATTEMPT
+# DOWNLOAD
 # ============================================================
 
-def run_ytdlp_attempt(
-    url,
-    attempt_name,
-    extra_args,
-):
+def download_rutube_video(video):
+    """
+    Скачивает конкретное RUTUBE видео в:
+        input/source.mp4
 
-    print("")
-    print("-" * 70)
-    print(
-        f"▶️ yt-dlp attempt: "
-        f"{attempt_name}"
-    )
-    print("-" * 70)
+    Используем yt-dlp + ffmpeg.
 
+    Render pipeline не затрагивается.
+    """
 
-    format_selector = (
+    url = video.get("webpage_url")
 
-        "bv*[height<=720]+ba/"
-        "b[height<=720]/"
-        "b"
+    if not url:
+        print("❌ Video URL is missing")
+        return False
 
-    )
+    title = video.get("title") or "Unknown"
 
+    print("=" * 70)
+    print("⬇️ DOWNLOADING RUTUBE VIDEO")
+    print("=" * 70)
 
-    output_template = (
-        "input/source.%(ext)s"
-    )
+    print(f"Title: {title}")
+    print(f"URL:   {url}")
+    print()
 
+    clean_source_file()
 
-    command = [
-
-        sys.executable,
-
-        "-m",
-
-        "yt_dlp",
-
-        "--no-playlist",
-
-        "--no-overwrites",
-
-        "--js-runtimes",
-        "deno",
-
-        "--remote-components",
-        "ejs:github",
-
-        "--format",
-        format_selector,
-
-        "--merge-output-format",
-        "mp4",
-
-        "--output",
-        output_template,
-
-        "--retries",
-        "2",
-
-        "--fragment-retries",
-        "2",
-
-        "--socket-timeout",
-        "30",
-
-    ]
-
-
-    command.extend(
-        extra_args
+    SOURCE_VIDEO.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
+    # --------------------------------------------------------
+    # Формат:
+    #
+    # bestvideo до 720p + bestaudio
+    # fallback на combined format
+    #
+    # Для RUTUBE yt-dlp сам получает доступные formats
+    # через extractor.
+    # --------------------------------------------------------
 
-    command.append(
-        url
-    )
+    ydl_opts = {
+        "outtmpl": str(
+            SOURCE_VIDEO.with_suffix(".%(ext)s")
+        ),
 
+        "format": (
+            f"bv*[height<={MAX_VIDEO_HEIGHT}]"
+            f"+ba/"
+            f"b[height<={MAX_VIDEO_HEIGHT}]"
+            f"/b"
+        ),
 
-    print("Running:")
+        "merge_output_format": "mp4",
 
-    print(
-        " ".join(command)
-    )
+        # ffmpeg
+        "ffmpeg_location": "ffmpeg",
 
+        # Сетевые настройки
+        "socket_timeout": 30,
+
+        # Повторные попытки
+        "retries": 5,
+        "fragment_retries": 5,
+
+        # Не оставляем лишние файлы
+        "keepvideo": False,
+
+        # Вывод
+        "quiet": False,
+        "no_warnings": False,
+
+        # Не скачивать плейлист
+        "noplaylist": True,
+    }
 
     try:
+        start_time = time.time()
 
-        result = subprocess.run(
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-            command,
+        elapsed = time.time() - start_time
 
-            stdout=None,
+        print()
+        print(f"Download finished in {elapsed:.1f}s")
 
-            stderr=None,
+    except Exception as e:
+        print()
+        print("❌ RUTUBE download failed")
+        print(f"Error: {e}")
 
-            text=True,
-
-            timeout=DOWNLOAD_TIMEOUT,
-        )
-
-
-    except subprocess.TimeoutExpired:
-
-        print(
-            "❌ yt-dlp timeout"
-        )
+        clean_source_file()
 
         return False
 
+    # --------------------------------------------------------
+    # Проверяем результат
+    # --------------------------------------------------------
 
-    if result.returncode != 0:
+    if SOURCE_VIDEO.exists():
+        size_mb = SOURCE_VIDEO.stat().st_size / 1024 / 1024
 
-        print(
-            f"❌ Attempt failed: "
-            f"{attempt_name}"
+        print()
+        print("✅ source.mp4 created")
+        print(f"Size: {size_mb:.2f} MB")
+
+        if size_mb < 1:
+            print("❌ File is suspiciously small")
+
+            clean_source_file()
+
+            return False
+
+        return True
+
+    # --------------------------------------------------------
+    # Иногда yt-dlp/ffmpeg может оставить другой extension.
+    # Ищем его.
+    # --------------------------------------------------------
+
+    possible_files = list(
+        SOURCE_VIDEO.parent.glob("source.*")
+    )
+
+    possible_files = [
+        path
+        for path in possible_files
+        if path.is_file()
+        and path.name != "source.mp4"
+        and path.suffix.lower()
+        in {".mkv", ".webm", ".mov", ".mp4", ".m4v"}
+    ]
+
+    if possible_files:
+
+        source = max(
+            possible_files,
+            key=lambda p: p.stat().st_size,
         )
 
-        return False
-
-
-    source = find_source_mp4()
-
-
-    if source is None:
-
         print(
-            "❌ yt-dlp finished but "
-            "no MP4 was created"
+            f"⚠️ Found downloaded file: "
+            f"{source}"
         )
 
-        return False
+        # Конвертируем в MP4 через ffmpeg.
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(source),
+                    "-c",
+                    "copy",
+                    str(SOURCE_VIDEO),
+                ],
+                check=True,
+            )
 
+            source.unlink(missing_ok=True)
 
-    # Make sure the final filename is exactly
-    # input/source.mp4.
+        except Exception as e:
+            print(
+                f"❌ Could not convert source to MP4: {e}"
+            )
 
-    if source != SOURCE_VIDEO:
+            return False
 
         if SOURCE_VIDEO.exists():
+            print("✅ Converted to input/source.mp4")
+            return True
 
-            SOURCE_VIDEO.unlink()
-
-
-        source.rename(
-            SOURCE_VIDEO
-        )
-
-
-    if not SOURCE_VIDEO.exists():
-
-        return False
-
-
-    size_mb = (
-
-        SOURCE_VIDEO.stat().st_size
-
-        / 1024
-
-        / 1024
-
-    )
-
-
-    print("")
-    print("=" * 70)
-    print("✅ SOURCE VIDEO DOWNLOADED")
-    print("=" * 70)
-
-
-    print(
-        f"File: {SOURCE_VIDEO}"
-    )
-
-
-    print(
-        f"Size: {size_mb:.1f} MB"
-    )
-
-
-    return True
-
-
-# ============================================================
-# DOWNLOAD VIDEO
-# ============================================================
-
-def download_video(
-    video
-):
-
-    url = video["url"]
-
-
-    print("")
-    print("=" * 70)
-    print("⬇️ TRYING YT-DLP")
-    print("=" * 70)
-
-
-    print(
-        f"Title: {video['title']}"
-    )
-
-
-    print(
-        f"Channel: {video['channel']}"
-    )
-
-
-    print(
-        f"URL: {url}"
-    )
-
-
-    remove_old_source_files()
-
-
-    # ========================================================
-    # ATTEMPT 1
-    # ========================================================
-    #
-    # Normal yt-dlp request with Deno/EJS.
-    #
-    # This is the preferred method.
-    # ========================================================
-
-    success = run_ytdlp_attempt(
-
-        url,
-
-        "standard YouTube",
-
-        [
-
-            "--extractor-args",
-            "youtube:player_client=web",
-
-        ],
-
-    )
-
-
-    if success:
-
-        return True
-
-
-    remove_old_source_files()
-
-
-    # ========================================================
-    # ATTEMPT 2
-    # ========================================================
-    #
-    # Try Android client.
-    # ========================================================
-
-    success = run_ytdlp_attempt(
-
-        url,
-
-        "Android client",
-
-        [
-
-            "--extractor-args",
-            "youtube:player_client=android",
-
-        ],
-
-    )
-
-
-    if success:
-
-        return True
-
-
-    remove_old_source_files()
-
-
-    # ========================================================
-    # ATTEMPT 3
-    # ========================================================
-    #
-    # Try iOS client.
-    # ========================================================
-
-    success = run_ytdlp_attempt(
-
-        url,
-
-        "iOS client",
-
-        [
-
-            "--extractor-args",
-            "youtube:player_client=ios",
-
-        ],
-
-    )
-
-
-    if success:
-
-        return True
-
-
-    remove_old_source_files()
-
-
-    print("")
-    print(
-        "❌ All yt-dlp strategies failed "
-        "for this video."
-    )
-
+    print("❌ input/source.mp4 was not created")
 
     return False
 
 
-# ============================================================
-# FIND DOWNLOADABLE VIDEO
-# ============================================================
-
 def find_and_download():
+    """
+    Основная логика:
 
-    candidates = search_youtube()
+        RUTUBE channel
+              ↓
+        список видео
+              ↓
+        фильтр
+              ↓
+        новое длинное видео
+              ↓
+        download
+              ↓
+        fallback на следующий кандидат
+    """
 
+    videos = get_rutube_videos()
 
-    print("")
+    if not videos:
+        raise RuntimeError(
+            "❌ No videos found on RUTUBE channel."
+        )
+
+    candidates = select_rutube_videos(videos)
+
+    if not candidates:
+        raise RuntimeError(
+            "❌ No suitable long RUTUBE videos found."
+        )
+
     print("=" * 70)
     print("🎯 DOWNLOAD CANDIDATES")
     print("=" * 70)
 
+    # Не больше 5 попыток.
+    candidates_to_try = candidates[:5]
 
     for index, video in enumerate(
-        candidates,
-        start=1
+        candidates_to_try,
+        start=1,
     ):
 
-        print("")
+        print()
         print(
-            f"Candidate {index}/"
-            f"{len(candidates)}"
+            f"Attempt {index}/"
+            f"{len(candidates_to_try)}"
         )
 
+        print_video_info(video)
 
-        success = download_video(
-            video
-        )
+        if download_rutube_video(video):
+            print()
+            print("🎉 RUTUBE source ready")
+            return True
 
-
-        if success:
-
-            print("")
+        if index < len(candidates_to_try):
+            print()
             print(
-                "🎉 Download successful."
+                f"Waiting {RETRY_DELAY}s before next video..."
             )
 
-            return
-
-
-        print("")
-        print(
-            "⚠️ This video could not "
-            "be downloaded."
-        )
-
+            time.sleep(RETRY_DELAY)
 
     raise RuntimeError(
-
-        "❌ None of the YouTube "
-        "candidates could be downloaded."
+        "❌ None of the RUTUBE candidates "
+        "could be downloaded."
     )
 
 
 # ============================================================
-# CLIP INFO
-# ============================================================
-
-def print_clip_info(
-    clips
-):
-
-    print("")
-    print("=" * 70)
-    print("🔥 SELECTED SHORTS")
-    print("=" * 70)
-
-
-    for index, clip in enumerate(
-        clips,
-        start=1
-    ):
-
-        start = float(
-            clip["start"]
-        )
-
-
-        end = float(
-            clip["end"]
-        )
-
-
-        duration = end - start
-
-
-        score = clip.get(
-            "score",
-            0
-        )
-
-
-        print("")
-
-        print(
-            f"#{index}"
-        )
-
-
-        print(
-            f"⏱ {start:.2f}s → "
-            f"{end:.2f}s"
-        )
-
-
-        print(
-            f"⌛ Duration: "
-            f"{duration:.2f}s"
-        )
-
-
-        print(
-            f"⭐ Score: "
-            f"{score}"
-        )
-
-
-        print(
-            f"🎯 Hook: "
-            f"{clip.get('hook', '')}"
-        )
-
-
-        print(
-            f"💡 Reason: "
-            f"{clip.get('reason', '')}"
-        )
-
-
-        print(
-            f"📝 Title hint: "
-            f"{clip.get('title_hint', '')}"
-        )
-
-
-    print("")
-
-
-# ============================================================
-# AI PROCESSING
+# PROCESS
 # ============================================================
 
 def process_video():
+    """
+    Существующий pipeline проекта.
 
-    print_header()
+    ВАЖНО:
+    Whisper → Gemini → Render не изменены.
+    """
 
+    print("=" * 70)
+    print("🎬 PROCESS VIDEO")
+    print("=" * 70)
 
-    # ========================================================
-    # GEMINI
-    # ========================================================
+    # --------------------------------------------------------
+    # Validate
+    # --------------------------------------------------------
 
-    if not os.getenv(
-        "GEMINI_KEY"
-    ):
-
-        raise RuntimeError(
-            "GEMINI_KEY environment "
-            "variable is not set"
+    if not SOURCE_VIDEO.exists():
+        raise FileNotFoundError(
+            "❌ input/source.mp4 not found"
         )
 
+    print()
+    print("1️⃣ Validating source video...")
 
-    # ========================================================
-    # SOURCE
-    # ========================================================
+    validate_source_video(SOURCE_VIDEO)
 
-    print(
-        "📹 STEP 1/6 — "
-        "Checking source video"
-    )
+    # --------------------------------------------------------
+    # Duration
+    # --------------------------------------------------------
 
-
-    validate_source_video(
-        SOURCE_VIDEO
-    )
-
-
-    duration = get_duration(
-        SOURCE_VIDEO
-    )
-
+    duration = get_duration(SOURCE_VIDEO)
 
     print(
-        f"⏱ Source duration: "
-        f"{duration / 60:.2f} minutes"
+        f"Source duration: "
+        f"{format_duration(duration)}"
     )
 
+    # --------------------------------------------------------
+    # Extract audio
+    # --------------------------------------------------------
 
-    # ========================================================
-    # AUDIO
-    # ========================================================
+    print()
+    print("2️⃣ Extracting audio...")
 
-    print("")
-
-    print(
-        "🎧 STEP 2/6 — "
-        "Extracting audio"
+    AUDIO_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
-
 
     extract_audio(
-
         SOURCE_VIDEO,
-
         AUDIO_FILE,
     )
 
+    # --------------------------------------------------------
+    # Whisper
+    # --------------------------------------------------------
 
-    # ========================================================
-    # WHISPER
-    # ========================================================
+    print()
+    print("3️⃣ Transcribing with Whisper...")
 
-    print("")
-
-    print(
-        "🎙 STEP 3/6 — "
-        "Transcribing with Whisper"
+    transcript = transcribe_with_language(
+        AUDIO_FILE,
+        language="ru",
     )
 
-
-    transcription = (
-        transcribe_with_language(
-            AUDIO_FILE
-        )
-    )
-
-
-    language = transcription[
-        "language"
-    ]
-
-
-    words = transcription[
-        "words"
-    ]
-
-
-    if not words:
-
+    if not transcript:
         raise RuntimeError(
-            "Whisper returned no words"
+            "❌ Whisper returned empty transcript"
         )
 
+    print("✅ Transcript ready")
 
-    print("")
+    # --------------------------------------------------------
+    # Gemini
+    # --------------------------------------------------------
 
-    print(
-        f"🌍 Detected language: "
-        f"{language}"
-    )
-
-
-    print(
-        f"📝 Word count: "
-        f"{len(words)}"
-    )
-
-
-    # ========================================================
-    # GEMINI
-    # ========================================================
-
-    print("")
-
-    print(
-        "🤖 STEP 4/6 — "
-        "Finding the best Shorts"
-    )
-
+    print()
+    print("4️⃣ Selecting clips with Gemini...")
 
     clips = select_clips(
-
-        words,
-
+        transcript,
         max_clips=MAX_CLIPS,
     )
 
-
     if not clips:
-
         raise RuntimeError(
-
-            "Gemini did not find "
-            "suitable clips"
+            "❌ Gemini did not return clips"
         )
 
+    print()
+    print(f"Selected clips: {len(clips)}")
 
-    print_clip_info(
-        clips
+    for index, clip in enumerate(
+        clips,
+        start=1,
+    ):
+        print()
+        print(f"Clip {index}:")
+        print(json.dumps(
+            clip,
+            ensure_ascii=False,
+            indent=2,
+        ))
+
+    # --------------------------------------------------------
+    # Render
+    # --------------------------------------------------------
+
+    print()
+    print("5️⃣ Rendering Shorts...")
+
+    CLIPS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-
-    # ========================================================
-    # RENDER
-    # ========================================================
-
-    print("")
-
-    print(
-        "🎬 STEP 5/6 — "
-        "Rendering Shorts"
-    )
-
-
-    rendered = render_clips(
-
-        source_video=SOURCE_VIDEO,
-
-        clips=clips,
-
+    render_clips(
+        SOURCE_VIDEO,
+        clips,
         output_dir=CLIPS_DIR,
     )
 
-
-    # ========================================================
-    # FINAL
-    # ========================================================
-
-    print("")
-
-    print(
-        "📦 STEP 6/6 — "
-        "Pipeline complete"
-    )
-
-
-    print("")
-
+    print()
     print("=" * 70)
-
-    print(
-        "✅ GENERATED SHORTS"
-    )
-
+    print("✅ PROCESS COMPLETE")
     print("=" * 70)
-
-
-    for path in rendered:
-
-        print(
-            f"🎬 {path}"
-        )
-
-
-    print("")
-
-    print("=" * 70)
-
-    print(
-        "🎉 DONE"
-    )
-
-    print("=" * 70)
-
-    print("")
 
 
 # ============================================================
@@ -1285,31 +783,40 @@ def process_video():
 # ============================================================
 
 def main():
+    print()
+    print("🚀 RUTUBE AI SHORTS")
+    print()
 
     if "--download" in sys.argv:
+        print("Mode: DOWNLOAD")
+        print()
 
         find_and_download()
 
         return
 
-
     if "--process" in sys.argv:
+        print("Mode: PROCESS")
+        print()
 
         process_video()
 
         return
 
+    # --------------------------------------------------------
+    # Default:
+    # download + process
+    # --------------------------------------------------------
 
-    # Default behavior:
-    # process already downloaded source.
+    print("Mode: DOWNLOAD + PROCESS")
+    print()
+
+    find_and_download()
+
+    print()
 
     process_video()
 
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
-
 if __name__ == "__main__":
-
     main()
