@@ -1,4 +1,3 @@
-```yaml
 name: AI Shorts Generator
 
 on:
@@ -131,4 +130,3 @@ jobs:
             output/clips/*.mp4
             output/source_audio.wav
           if-no-files-found: warn
-```
