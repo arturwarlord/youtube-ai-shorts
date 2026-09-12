@@ -36,7 +36,7 @@ def transcribe_audio(audio_file):
     print(f"🎙 Transcribing: {audio_file}")
 
     result = model.transcribe(
-        audio_file,
+        str(audio_file),
         language=None,
         word_timestamps=True,
         fp16=False,
@@ -60,7 +60,7 @@ def transcribe_audio(audio_file):
                 }
             )
 
-    print(f"✅ Transcription complete")
+    print("✅ Transcription complete")
     print(f"📝 Words: {len(words)}")
     print(f"🌍 Language: {result.get('language', 'unknown')}")
 
@@ -72,7 +72,7 @@ def transcribe_with_language(audio_file):
     Extended transcription.
 
     Returns both detected language and word timestamps.
-    Useful for the new long-video → Shorts pipeline.
+    Useful for the long-video → Shorts pipeline.
     """
 
     model = get_model()
@@ -80,7 +80,7 @@ def transcribe_with_language(audio_file):
     print(f"🎙 Transcribing: {audio_file}")
 
     result = model.transcribe(
-        audio_file,
+        str(audio_file),
         language=None,
         word_timestamps=True,
         fp16=False,
@@ -106,7 +106,7 @@ def transcribe_with_language(audio_file):
 
     language = result.get("language", "unknown")
 
-    print(f"✅ Transcription complete")
+    print("✅ Transcription complete")
     print(f"🌍 Detected language: {language}")
     print(f"📝 Words: {len(words)}")
 
