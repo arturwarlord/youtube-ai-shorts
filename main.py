@@ -712,7 +712,6 @@ def process_video():
 
     transcript = transcribe_with_language(
         AUDIO_FILE,
-        language="ru",
     )
 
     if not transcript:
