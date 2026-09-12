@@ -1,4 +1,3 @@
-```python
 import whisper
 
 
@@ -115,4 +114,3 @@ def transcribe_with_language(audio_file):
         "language": language,
         "words": words,
     }
-```
