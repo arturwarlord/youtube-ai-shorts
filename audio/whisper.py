@@ -1,190 +1,118 @@
-import gc
-
+```python
 import whisper
 
 
-# ==========================
-# CONFIG
-# ==========================
-
 MODEL_NAME = "tiny"
 
+_model = None
 
-# ==========================
-# GLOBAL MODEL CACHE
-# ==========================
-
-MODEL = None
-
-
-# ==========================
-# LOAD MODEL
-# ==========================
 
 def get_model():
+    global _model
 
-    global MODEL
+    if _model is None:
+        print(f"🎙 Loading Whisper model: {MODEL_NAME}")
+        _model = whisper.load_model(MODEL_NAME)
 
-
-    if MODEL is None:
-
-        print(
-            "🧠 Загрузка Whisper модели..."
-        )
+    return _model
 
 
-        # Освобождаем неиспользуемую память
-        gc.collect()
+def transcribe_audio(audio_file):
+    """
+    Transcribe audio with automatic language detection.
 
+    Returns a list of words with timestamps:
 
-        MODEL = whisper.load_model(
-
-            MODEL_NAME
-
-        )
-
-
-        print(
-
-            f"✅ Whisper модель загружена: "
-            f"{MODEL_NAME}"
-
-        )
-
-
-    return MODEL
-
-
-# ==========================
-# TRANSCRIBE AUDIO
-# ==========================
-
-def transcribe_audio(
-
-        audio_file
-
-):
+    [
+        {
+            "word": "Привет",
+            "start": 0.12,
+            "end": 0.48
+        }
+    ]
+    """
 
     model = get_model()
 
-
-    print(
-
-        "🎧 Распознавание голоса..."
-
-    )
-
+    print(f"🎙 Transcribing: {audio_file}")
 
     result = model.transcribe(
-
         audio_file,
-
-        language="ru",
-
+        language=None,
         word_timestamps=True,
-
         fp16=False,
-
-        temperature=0
-
+        temperature=0,
     )
-
 
     words = []
 
+    for segment in result.get("segments", []):
+        for word in segment.get("words", []):
+            text = word.get("word", "").strip()
 
-    for segment in result.get(
-
-        "segments",
-
-        []
-
-    ):
-
-
-        for item in segment.get(
-
-            "words",
-
-            []
-
-        ):
-
-
-            word = item.get(
-
-                "word",
-
-                ""
-
-            ).strip()
-
-
-            start = item.get(
-
-                "start",
-
-                None
-
-            )
-
-
-            end = item.get(
-
-                "end",
-
-                None
-
-            )
-
-
-            if not word:
-
+            if not text:
                 continue
-
-
-            if start is None or end is None:
-
-                continue
-
 
             words.append(
-
                 {
-
-                    "word": word,
-
-                    "start": float(start),
-
-                    "end": float(end)
-
+                    "word": text,
+                    "start": float(word.get("start", 0)),
+                    "end": float(word.get("end", 0)),
                 }
-
             )
 
-
-    print(
-
-        f"✅ Найдено слов: "
-        f"{len(words)}"
-
-    )
-
-
-    if words:
-
-        print(
-
-            "🔤 Пример:"
-
-        )
-
-
-        print(
-
-            words[:5]
-
-        )
-
+    print(f"✅ Transcription complete")
+    print(f"📝 Words: {len(words)}")
+    print(f"🌍 Language: {result.get('language', 'unknown')}")
 
     return words
+
+
+def transcribe_with_language(audio_file):
+    """
+    Extended transcription.
+
+    Returns both detected language and word timestamps.
+    Useful for the new long-video → Shorts pipeline.
+    """
+
+    model = get_model()
+
+    print(f"🎙 Transcribing: {audio_file}")
+
+    result = model.transcribe(
+        audio_file,
+        language=None,
+        word_timestamps=True,
+        fp16=False,
+        temperature=0,
+    )
+
+    words = []
+
+    for segment in result.get("segments", []):
+        for word in segment.get("words", []):
+            text = word.get("word", "").strip()
+
+            if not text:
+                continue
+
+            words.append(
+                {
+                    "word": text,
+                    "start": float(word.get("start", 0)),
+                    "end": float(word.get("end", 0)),
+                }
+            )
+
+    language = result.get("language", "unknown")
+
+    print(f"✅ Transcription complete")
+    print(f"🌍 Detected language: {language}")
+    print(f"📝 Words: {len(words)}")
+
+    return {
+        "language": language,
+        "words": words,
+    }
+```
