@@ -2,53 +2,63 @@ name: AI Shorts Generator
 
 on:
   workflow_dispatch:
+    inputs:
+      search_query:
+        description: "YouTube search query"
+        required: false
+        default: "viral podcast interview"
+        type: string
 
   schedule:
     - cron: "0 9 * * *"
     - cron: "0 15 * * *"
     - cron: "0 21 * * *"
 
+
 jobs:
+
   generate:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
 
-      # ==========================
-      # DOWNLOAD PROJECT
-      # ==========================
+      # ==========================================================
+      # CHECKOUT
+      # ==========================================================
 
       - name: Download project
         uses: actions/checkout@v4
 
 
-      # ==========================
+      # ==========================================================
       # PYTHON
-      # ==========================
+      # ==========================================================
 
       - name: Install Python
         uses: actions/setup-python@v5
+
         with:
           python-version: "3.11"
           cache: "pip"
 
 
-      # ==========================
+      # ==========================================================
       # DENO
-      # ==========================
+      # ==========================================================
 
       - name: Install Deno
         uses: denoland/setup-deno@v2
+
         with:
           deno-version: v2.x
 
 
-      # ==========================
+      # ==========================================================
       # FFMPEG
-      # ==========================
+      # ==========================================================
 
       - name: Install ffmpeg
         run: |
@@ -56,145 +66,158 @@ jobs:
           sudo apt-get install -y ffmpeg
 
 
-      # ==========================
+      # ==========================================================
       # WHISPER CACHE
-      # ==========================
+      # ==========================================================
 
       - name: Cache Whisper model
         uses: actions/cache@v4
+
         with:
           path: ~/.cache/whisper
           key: whisper-tiny-v1
 
 
-      # ==========================
+      # ==========================================================
       # PYTHON PACKAGES
-      # ==========================
+      # ==========================================================
 
       - name: Install packages
         run: |
+
           python -m pip install --upgrade pip
+
           pip install -r requirements.txt
 
+          pip install --upgrade "yt-dlp[default]"
 
-      # ==========================
-      # UPDATE YT-DLP
-      # ==========================
 
-      - name: Update yt-dlp
+      # ==========================================================
+      # SHOW VERSIONS
+      # ==========================================================
+
+      - name: Check tools
         run: |
-          python -m pip install --upgrade yt-dlp
+
+          python --version
+
           yt-dlp --version
 
+          deno --version
 
-      # ==========================
-      # PREPARE DIRECTORIES
-      # ==========================
+          ffmpeg -version | head -n 1
+
+
+      # ==========================================================
+      # DIRECTORIES
+      # ==========================================================
 
       - name: Prepare input
         run: |
+
           mkdir -p input
           mkdir -p output
           mkdir -p output/clips
 
+          rm -f input/source.mp4
 
-      # ==========================
-      # CREATE YOUTUBE COOKIES
-      # ==========================
 
-      - name: Create YouTube cookies
+      # ==========================================================
+      # SEARCH + DOWNLOAD
+      # ==========================================================
+
+      - name: Find and download source video
+
         env:
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+
+          SEARCH_QUERY: ${{ inputs.search_query }}
 
         run: |
-          if [ -z "$YOUTUBE_COOKIES" ]; then
-            echo "ERROR: YOUTUBE_COOKIES secret is not set"
+
+          python main.py --download
+
+
+      # ==========================================================
+      # CHECK SOURCE
+      # ==========================================================
+
+      - name: Check downloaded video
+
+        run: |
+
+          if [ ! -f "input/source.mp4" ]; then
+
+            echo "ERROR: input/source.mp4 was not created"
+
             exit 1
+
           fi
 
-          printf '%s' "$YOUTUBE_COOKIES" > youtube_cookies.txt
 
-          chmod 600 youtube_cookies.txt
+          echo ""
 
-          echo "Cookies file created"
+          echo "Source video:"
 
-          if head -n 1 youtube_cookies.txt | grep -qE '^# (Netscape HTTP Cookie File|HTTP Cookie File)$'; then
-            echo "Cookie format: OK"
-          else
-            echo "WARNING: Cookie file header was not detected"
-          fi
-
-          echo "Cookie file size:"
-          wc -c youtube_cookies.txt
+          ls -lh input/source.mp4
 
 
-      # ==========================
-      # DOWNLOAD SOURCE VIDEO
-      # ==========================
+          echo ""
 
-      - name: Download source video
-        env:
-          SOURCE_URL: ${{ secrets.SOURCE_URL }}
-
-        run: |
-          if [ -z "$SOURCE_URL" ]; then
-            echo "ERROR: SOURCE_URL secret is not set"
-            exit 1
-          fi
-
-          yt-dlp \
-            --cookies youtube_cookies.txt \
-            --js-runtimes deno \
-            --remote-components ejs:github \
-            --no-playlist \
-            -f "bv*+ba/b" \
-            --merge-output-format mp4 \
-            -o "input/source.%(ext)s" \
-            "$SOURCE_URL"
-
-          echo "Downloaded files:"
-          ls -lah input/
+          echo "Video information:"
 
 
-      # ==========================
-      # REMOVE COOKIES
-      # ==========================
-
-      - name: Remove YouTube cookies
-        if: always()
-        run: |
-          rm -f youtube_cookies.txt
+          ffprobe \
+            -v error \
+            -show_entries format=duration,size \
+            -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 \
+            input/source.mp4
 
 
-      # ==========================
-      # RUN AI SHORTS GENERATOR
-      # ==========================
+      # ==========================================================
+      # AI SHORTS
+      # ==========================================================
 
       - name: Run AI
+
         env:
+
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+
           PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+
           FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+
           YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
 
         run: |
-          python main.py
+
+          python main.py --process
 
 
-      # ==========================
-      # SAVE GENERATED FILES
-      # ==========================
+      # ==========================================================
+      # SAVE RESULTS
+      # ==========================================================
 
       - name: Save generated files
+
+        if: always()
+
         uses: actions/upload-artifact@v4
 
         with:
+
           name: youtube-short
 
           path: |
+
             output/short.mp4
             output/thumbnail.jpg
+
             output/clips/*.mp4
+
             output/source_audio.wav
 
           if-no-files-found: warn
