@@ -4,7 +4,6 @@ edge-tts
 moviepy
 python-dotenv
 pydub
-moviepy
 imageio-ffmpeg
 Pillow
 numpy
@@ -13,3 +12,4 @@ openai-whisper
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+yt-dlp
