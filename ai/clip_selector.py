@@ -1,4 +1,3 @@
-````python
 import os
 import json
 import re
@@ -279,4 +278,3 @@ TRANSCRIPT:
     )
 
     return valid[:max_clips]
-````
