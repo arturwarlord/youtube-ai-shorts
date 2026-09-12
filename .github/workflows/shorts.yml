@@ -31,7 +31,6 @@ jobs:
 
       - name: Install Python
         uses: actions/setup-python@v5
-
         with:
           python-version: "3.11"
           cache: "pip"
@@ -43,7 +42,6 @@ jobs:
 
       - name: Install Deno
         uses: denoland/setup-deno@v2
-
         with:
           deno-version: v2.x
 
@@ -64,7 +62,6 @@ jobs:
 
       - name: Cache Whisper model
         uses: actions/cache@v4
-
         with:
           path: ~/.cache/whisper
           key: whisper-tiny-v1
@@ -102,6 +99,27 @@ jobs:
 
 
       # ==========================
+      # CREATE YOUTUBE COOKIES
+      # ==========================
+
+      - name: Create YouTube cookies
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+
+        run: |
+          if [ -z "$YOUTUBE_COOKIES" ]; then
+            echo "ERROR: YOUTUBE_COOKIES secret is not set"
+            exit 1
+          fi
+
+          printf '%s' "$YOUTUBE_COOKIES" > youtube_cookies.txt
+
+          chmod 600 youtube_cookies.txt
+
+          echo "YouTube cookies file created"
+
+
+      # ==========================
       # DOWNLOAD SOURCE VIDEO
       # ==========================
 
@@ -116,6 +134,7 @@ jobs:
           fi
 
           yt-dlp \
+            --cookies youtube_cookies.txt \
             --js-runtimes deno \
             --no-playlist \
             -f "bv*+ba/b" \
@@ -125,6 +144,16 @@ jobs:
 
           echo "Downloaded files:"
           ls -lah input/
+
+
+      # ==========================
+      # REMOVE COOKIES
+      # ==========================
+
+      - name: Remove YouTube cookies
+        if: always()
+        run: |
+          rm -f youtube_cookies.txt
 
 
       # ==========================
