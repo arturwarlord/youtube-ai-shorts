@@ -34,9 +34,9 @@ CLIPS_DIR = Path("output/clips")
 MAX_CLIPS = 3
 
 
-# ------------------------------------------------------------
-# YouTube
-# ------------------------------------------------------------
+# ============================================================
+# YOUTUBE API
+# ============================================================
 
 YOUTUBE_API_URL = (
     "https://www.googleapis.com/youtube/v3"
@@ -51,9 +51,9 @@ SEARCH_RESULTS = 10
 SEARCH_DAYS = 14
 
 
-# ------------------------------------------------------------
-# yt-dlp
-# ------------------------------------------------------------
+# ============================================================
+# YT-DLP
+# ============================================================
 
 MAX_VIDEO_HEIGHT = 720
 
@@ -248,9 +248,9 @@ def search_youtube():
         )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # GET VIDEO DETAILS
-    # --------------------------------------------------------
+    # ========================================================
 
     video_ids = [
         item["video_id"]
@@ -288,11 +288,8 @@ def search_youtube():
         ]
 
 
-        # We want long-form videos.
-        #
-        # Minimum: 4 minutes.
-        #
-        # This avoids Shorts and very short clips.
+        # Only long-form videos.
+        # Minimum 4 minutes.
 
         if duration < 240:
 
@@ -309,7 +306,7 @@ def search_youtube():
         )
 
 
-    # If filtering removed everything,
+    # If all candidates were filtered,
     # use the original candidates.
 
     if not result:
@@ -525,37 +522,20 @@ def parse_iso_duration(
 
 
 # ============================================================
-# YT-DLP
+# REMOVE OLD SOURCE FILES
 # ============================================================
 
-def download_video(
-    video
-):
+def remove_old_source_files():
 
-    url = video["url"]
+    input_dir = Path("input")
 
-
-    print("")
-    print("=" * 70)
-    print("⬇️ TRYING YT-DLP")
-    print("=" * 70)
-
-
-    print(
-        f"Title: {video['title']}"
+    input_dir.mkdir(
+        parents=True,
+        exist_ok=True
     )
 
 
-    print(
-        f"URL: {url}"
-    )
-
-
-    # --------------------------------------------------------
-    # Remove old files
-    # --------------------------------------------------------
-
-    for file in Path("input").glob(
+    for file in input_dir.glob(
         "source.*"
     ):
 
@@ -563,33 +543,82 @@ def download_video(
 
             file.unlink()
 
-        except Exception:
-            pass
+        except Exception as exc:
+
+            print(
+                f"⚠️ Could not remove "
+                f"{file}: {exc}"
+            )
 
 
-    # --------------------------------------------------------
-    # Format
-    # --------------------------------------------------------
-    #
-    # Prefer <=720p.
-    #
-    # Prefer MP4/M4A.
-    #
-    # If separate video/audio streams exist,
-    # ffmpeg merges them into source.mp4.
-    #
-    # If a combined format exists, use it as fallback.
-    #
-    # This avoids the previous 4.2 GB 4K download.
-    # --------------------------------------------------------
+# ============================================================
+# CHECK RESULT
+# ============================================================
+
+def find_source_mp4():
+
+    source_files = list(
+        Path("input").glob(
+            "source.*"
+        )
+    )
+
+
+    mp4_files = [
+
+        file
+
+        for file in source_files
+
+        if file.suffix.lower() == ".mp4"
+
+    ]
+
+
+    if not mp4_files:
+
+        return None
+
+
+    # Prefer exact expected filename.
+
+    exact = Path(
+        "input/source.mp4"
+    )
+
+
+    if exact.exists():
+
+        return exact
+
+
+    return mp4_files[0]
+
+
+# ============================================================
+# YT-DLP SINGLE ATTEMPT
+# ============================================================
+
+def run_ytdlp_attempt(
+    url,
+    attempt_name,
+    extra_args,
+):
+
+    print("")
+    print("-" * 70)
+    print(
+        f"▶️ yt-dlp attempt: "
+        f"{attempt_name}"
+    )
+    print("-" * 70)
+
 
     format_selector = (
 
-        "((bv*[height<=720][ext=mp4]"
-        "+ba[ext=m4a])"
-        "/(bv*[height<=720]"
-        "+ba)"
-        "/b[height<=720])"
+        "bv*[height<=720]+ba/"
+        "b[height<=720]/"
+        "b"
 
     )
 
@@ -609,8 +638,6 @@ def download_video(
 
         "--no-playlist",
 
-        "--no-part",
-
         "--no-overwrites",
 
         "--js-runtimes",
@@ -629,25 +656,28 @@ def download_video(
         output_template,
 
         "--retries",
-        "3",
+        "2",
 
         "--fragment-retries",
-        "3",
+        "2",
 
         "--socket-timeout",
         "30",
 
-        "--no-warnings",
-
-        url,
     ]
 
 
-    print("")
-    print(
-        "Running:"
+    command.extend(
+        extra_args
     )
 
+
+    command.append(
+        url
+    )
+
+
+    print("Running:")
 
     print(
         " ".join(command)
@@ -681,50 +711,29 @@ def download_video(
 
     if result.returncode != 0:
 
-        print("")
         print(
-            "❌ yt-dlp failed"
+            f"❌ Attempt failed: "
+            f"{attempt_name}"
         )
 
         return False
 
 
-    # --------------------------------------------------------
-    # Find resulting MP4
-    # --------------------------------------------------------
-
-    source_files = list(
-        Path("input").glob(
-            "source.*"
-        )
-    )
+    source = find_source_mp4()
 
 
-    mp4_files = [
-
-        file
-
-        for file in source_files
-
-        if file.suffix.lower() == ".mp4"
-
-    ]
-
-
-    if not mp4_files:
+    if source is None:
 
         print(
-            "❌ yt-dlp finished "
-            "but source.mp4 was not created"
+            "❌ yt-dlp finished but "
+            "no MP4 was created"
         )
 
         return False
 
 
-    source = mp4_files[0]
-
-
-    # Ensure exact expected filename.
+    # Make sure the final filename is exactly
+    # input/source.mp4.
 
     if source != SOURCE_VIDEO:
 
@@ -737,10 +746,6 @@ def download_video(
             SOURCE_VIDEO
         )
 
-
-    # --------------------------------------------------------
-    # Check file
-    # --------------------------------------------------------
 
     if not SOURCE_VIDEO.exists():
 
@@ -778,6 +783,146 @@ def download_video(
 
 
 # ============================================================
+# DOWNLOAD VIDEO
+# ============================================================
+
+def download_video(
+    video
+):
+
+    url = video["url"]
+
+
+    print("")
+    print("=" * 70)
+    print("⬇️ TRYING YT-DLP")
+    print("=" * 70)
+
+
+    print(
+        f"Title: {video['title']}"
+    )
+
+
+    print(
+        f"Channel: {video['channel']}"
+    )
+
+
+    print(
+        f"URL: {url}"
+    )
+
+
+    remove_old_source_files()
+
+
+    # ========================================================
+    # ATTEMPT 1
+    # ========================================================
+    #
+    # Normal yt-dlp request with Deno/EJS.
+    #
+    # This is the preferred method.
+    # ========================================================
+
+    success = run_ytdlp_attempt(
+
+        url,
+
+        "standard YouTube",
+
+        [
+
+            "--extractor-args",
+            "youtube:player_client=web",
+
+        ],
+
+    )
+
+
+    if success:
+
+        return True
+
+
+    remove_old_source_files()
+
+
+    # ========================================================
+    # ATTEMPT 2
+    # ========================================================
+    #
+    # Try Android client.
+    # ========================================================
+
+    success = run_ytdlp_attempt(
+
+        url,
+
+        "Android client",
+
+        [
+
+            "--extractor-args",
+            "youtube:player_client=android",
+
+        ],
+
+    )
+
+
+    if success:
+
+        return True
+
+
+    remove_old_source_files()
+
+
+    # ========================================================
+    # ATTEMPT 3
+    # ========================================================
+    #
+    # Try iOS client.
+    # ========================================================
+
+    success = run_ytdlp_attempt(
+
+        url,
+
+        "iOS client",
+
+        [
+
+            "--extractor-args",
+            "youtube:player_client=ios",
+
+        ],
+
+    )
+
+
+    if success:
+
+        return True
+
+
+    remove_old_source_files()
+
+
+    print("")
+    print(
+        "❌ All yt-dlp strategies failed "
+        "for this video."
+    )
+
+
+    return False
+
+
+# ============================================================
 # FIND DOWNLOADABLE VIDEO
 # ============================================================
 
@@ -791,12 +936,6 @@ def find_and_download():
     print("🎯 DOWNLOAD CANDIDATES")
     print("=" * 70)
 
-
-    # Try up to all returned candidates.
-    #
-    # This is important:
-    # if YouTube blocks one video,
-    # we don't kill the entire workflow.
 
     for index, video in enumerate(
         candidates,
@@ -816,6 +955,11 @@ def find_and_download():
 
 
         if success:
+
+            print("")
+            print(
+                "🎉 Download successful."
+            )
 
             return
 
@@ -927,9 +1071,9 @@ def process_video():
     print_header()
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # GEMINI
-    # --------------------------------------------------------
+    # ========================================================
 
     if not os.getenv(
         "GEMINI_KEY"
@@ -941,9 +1085,9 @@ def process_video():
         )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # SOURCE
-    # --------------------------------------------------------
+    # ========================================================
 
     print(
         "📹 STEP 1/6 — "
@@ -967,9 +1111,9 @@ def process_video():
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # AUDIO
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
 
@@ -987,9 +1131,9 @@ def process_video():
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # WHISPER
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
 
@@ -1037,9 +1181,9 @@ def process_video():
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # GEMINI
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
 
@@ -1071,9 +1215,9 @@ def process_video():
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # RENDER
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
 
@@ -1093,9 +1237,9 @@ def process_video():
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # FINAL
-    # --------------------------------------------------------
+    # ========================================================
 
     print("")
 
