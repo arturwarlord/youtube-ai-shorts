@@ -1,4 +1,3 @@
-```python
 import os
 import subprocess
 from pathlib import Path
@@ -305,5 +304,4 @@ def render_clips(
         rendered.append(str(output_path))
 
     return rendered
-```
 
