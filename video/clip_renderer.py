@@ -173,8 +173,8 @@ def render_clip(
     crop_filter = (
         "crop="
         "if(gt(iw/ih\\,9/16)\\,ih*9/16\\,iw):"
-        "if(gt(iw/ih\\,9/16)\\,ih\\,iw*16/9),"
-        "(iw-ow)/2,"
+        "if(gt(iw/ih\\,9/16)\\,ih\\,iw*16/9):"
+        "(iw-ow)/2:"
         "(ih-oh)/2,"
         "scale=1080:1920:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
