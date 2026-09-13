@@ -976,7 +976,7 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # 6 + 7. Subtitles + Metadata
+    # 6 + 7 + 8. Subtitles + Metadata + Thumbnails
     # --------------------------------------------------------
 
     print()
@@ -991,9 +991,17 @@ def process_video():
         "7️⃣ Generating metadata..."
     )
 
+    print()
+
+    print(
+        "8️⃣ Generating thumbnails..."
+    )
+
     final_videos = []
 
     metadata_files = []
+
+    thumbnail_files = []
 
     for index, (
         rendered_path,
@@ -1019,6 +1027,11 @@ def process_video():
         metadata_path = (
             CLIPS_DIR
             / f"clip_{index:02d}_metadata.json"
+        )
+
+        thumbnail_path = (
+            CLIPS_DIR
+            / f"clip_{index:02d}_thumbnail.jpg"
         )
 
         print()
@@ -1058,6 +1071,11 @@ def process_video():
         )
 
         print(
+            f"Thumbnail: "
+            f"{thumbnail_path}"
+        )
+
+        print(
             "=" * 60
         )
 
@@ -1094,6 +1112,12 @@ def process_video():
             str(final_path)
         )
 
+        print()
+
+        print(
+            "✅ Subtitle video created"
+        )
+
         # ----------------------------------------------------
         # METADATA
         # ----------------------------------------------------
@@ -1117,7 +1141,7 @@ def process_video():
             )
 
         # ----------------------------------------------------
-        # Сохраняем JSON
+        # SAVE METADATA JSON
         # ----------------------------------------------------
 
         metadata_path.write_text(
@@ -1179,17 +1203,42 @@ def process_video():
             f"📁 {metadata_path}"
         )
 
-    thumbnail_path = CLIPS_DIR / f"clip_{index:02d}_thumbnail.jpg"
+        # ----------------------------------------------------
+        # THUMBNAIL
+        # ----------------------------------------------------
 
-    create_thumbnail(
-        final_path,
-        metadata_path,
-        thumbnail_path,
-    )
+        print()
 
-    print(
-        f"🖼️ Thumbnail created: {thumbnail_path}"
-    )
+        print(
+            f"🖼️ Generating thumbnail "
+            f"for clip {index}..."
+        )
+
+        create_thumbnail(
+            final_path,
+            metadata_path,
+            thumbnail_path,
+        )
+
+        if not thumbnail_path.exists():
+
+            raise RuntimeError(
+                "❌ Thumbnail was not created: "
+                f"{thumbnail_path}"
+            )
+
+        thumbnail_files.append(
+            str(thumbnail_path)
+        )
+
+        print(
+            "✅ Thumbnail created"
+        )
+
+        print(
+            f"📁 {thumbnail_path}"
+        )
+
     # --------------------------------------------------------
     # FINAL CHECK
     # --------------------------------------------------------
@@ -1210,6 +1259,10 @@ def process_video():
 
     print()
 
+    # --------------------------------------------------------
+    # FINAL VIDEOS
+    # --------------------------------------------------------
+
     print(
         "🎬 Final videos:"
     )
@@ -1222,6 +1275,9 @@ def process_video():
         path = Path(
             video_path
         )
+
+        if not path.exists():
+            continue
 
         size_mb = (
             path.stat().st_size
@@ -1241,6 +1297,10 @@ def process_video():
 
     print()
 
+    # --------------------------------------------------------
+    # METADATA
+    # --------------------------------------------------------
+
     print(
         "📝 Metadata files:"
     )
@@ -1256,6 +1316,91 @@ def process_video():
         )
 
     print()
+
+    # --------------------------------------------------------
+    # THUMBNAILS
+    # --------------------------------------------------------
+
+    print(
+        "🖼️ Thumbnail files:"
+    )
+
+    for index, thumbnail_path in enumerate(
+        thumbnail_files,
+        start=1,
+    ):
+
+        path = Path(
+            thumbnail_path
+        )
+
+        if not path.exists():
+            continue
+
+        size_mb = (
+            path.stat().st_size
+            / 1024
+            / 1024
+        )
+
+        print(
+            f"  ✅ Clip {index}: "
+            f"{path}"
+        )
+
+        print(
+            f"     Size: "
+            f"{size_mb:.2f} MB"
+        )
+
+    print()
+
+    # --------------------------------------------------------
+    # FINAL COUNTS
+    # --------------------------------------------------------
+
+    print(
+        "📊 Pipeline summary:"
+    )
+
+    print(
+        f"   Clips selected:    {len(clips)}"
+    )
+
+    print(
+        f"   Videos rendered:   {len(final_videos)}"
+    )
+
+    print(
+        f"   Metadata created:  {len(metadata_files)}"
+    )
+
+    print(
+        f"   Thumbnails created:{len(thumbnail_files)}"
+    )
+
+    print()
+
+    if len(final_videos) != len(clips):
+
+        raise RuntimeError(
+            "❌ Final video count does not "
+            "match selected clip count"
+        )
+
+    if len(metadata_files) != len(clips):
+
+        raise RuntimeError(
+            "❌ Metadata count does not "
+            "match selected clip count"
+        )
+
+    if len(thumbnail_files) != len(clips):
+
+        raise RuntimeError(
+            "❌ Thumbnail count does not "
+            "match selected clip count"
+        )
 
     print(
         "=" * 70
