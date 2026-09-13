@@ -25,6 +25,8 @@ from video.subtitles import (
     burn_subtitles,
 )
 
+from youtube.uploader import upload_video
+
 
 # ============================================================
 # CONFIG
@@ -40,7 +42,9 @@ RUTUBE_MAX_VIDEOS = 20
 
 MIN_SOURCE_DURATION = 20 * 60
 
-MAX_CLIPS = 3
+# 2 Shorts за один запуск.
+# Workflow запускается 3 раза в день = 6 Shorts / день.
+MAX_CLIPS = 2
 
 MAX_VIDEO_HEIGHT = 720
 
@@ -1003,6 +1007,8 @@ def process_video():
 
     thumbnail_files = []
 
+    uploaded_videos = []
+
     for index, (
         rendered_path,
         clip,
@@ -1239,6 +1245,139 @@ def process_video():
             f"📁 {thumbnail_path}"
         )
 
+        # ----------------------------------------------------
+        # YOUTUBE UPLOAD
+        # ----------------------------------------------------
+
+        print()
+
+        print(
+            "=" * 60
+        )
+
+        print(
+            f"📤 UPLOADING CLIP "
+            f"{index}/{len(clips)} TO YOUTUBE"
+        )
+
+        print(
+            "=" * 60
+        )
+
+        title = str(
+            metadata.get(
+                "title",
+                "",
+            )
+        ).strip()
+
+        description = str(
+            metadata.get(
+                "description",
+                "",
+            )
+        ).strip()
+
+        hashtags = metadata.get(
+            "hashtags",
+            [],
+        )
+
+        tags = metadata.get(
+            "tags",
+            [],
+        )
+
+        if not title:
+
+            raise RuntimeError(
+                f"❌ Empty YouTube title "
+                f"for clip {index}"
+            )
+
+        if not description:
+
+            raise RuntimeError(
+                f"❌ Empty YouTube description "
+                f"for clip {index}"
+            )
+
+        if not isinstance(
+            hashtags,
+            list,
+        ):
+
+            hashtags = []
+
+        if not isinstance(
+            tags,
+            list,
+        ):
+
+            tags = []
+
+        # upload_video() ожидает hashtags
+        # как готовую строку.
+        hashtags_text = " ".join(
+            str(item).strip()
+            for item in hashtags
+            if str(item).strip()
+        )
+
+        # tags должны передаваться списком.
+        clean_tags = []
+
+        for tag in tags:
+
+            tag = str(tag).strip()
+
+            if not tag:
+                continue
+
+            if tag.startswith("#"):
+                tag = tag[1:]
+
+            if tag not in clean_tags:
+                clean_tags.append(tag)
+
+        youtube_video_id = upload_video(
+            video_path=str(final_path),
+            thumbnail_path=str(thumbnail_path),
+            title=title,
+            description=description,
+            hashtags=hashtags_text,
+            tags=clean_tags,
+        )
+
+        if not youtube_video_id:
+
+            raise RuntimeError(
+                f"❌ YouTube upload failed "
+                f"for clip {index}"
+            )
+
+        uploaded_videos.append(
+            youtube_video_id
+        )
+
+        print()
+
+        print(
+            f"✅ Clip {index} published "
+            f"to YouTube"
+        )
+
+        print(
+            f"🎬 Video ID: "
+            f"{youtube_video_id}"
+        )
+
+        print(
+            "🔗 "
+            f"https://www.youtube.com/watch?v="
+            f"{youtube_video_id}"
+        )
+
     # --------------------------------------------------------
     # FINAL CHECK
     # --------------------------------------------------------
@@ -1356,6 +1495,31 @@ def process_video():
     print()
 
     # --------------------------------------------------------
+    # YOUTUBE
+    # --------------------------------------------------------
+
+    print(
+        "📺 YouTube uploads:"
+    )
+
+    for index, video_id in enumerate(
+        uploaded_videos,
+        start=1,
+    ):
+
+        print(
+            f"  ✅ Clip {index}: "
+            f"{video_id}"
+        )
+
+        print(
+            f"     https://www.youtube.com/watch?v="
+            f"{video_id}"
+        )
+
+    print()
+
+    # --------------------------------------------------------
     # FINAL COUNTS
     # --------------------------------------------------------
 
@@ -1364,19 +1528,23 @@ def process_video():
     )
 
     print(
-        f"   Clips selected:    {len(clips)}"
+        f"   Clips selected:     {len(clips)}"
     )
 
     print(
-        f"   Videos rendered:   {len(final_videos)}"
+        f"   Videos rendered:    {len(final_videos)}"
     )
 
     print(
-        f"   Metadata created:  {len(metadata_files)}"
+        f"   Metadata created:   {len(metadata_files)}"
     )
 
     print(
-        f"   Thumbnails created:{len(thumbnail_files)}"
+        f"   Thumbnails created: {len(thumbnail_files)}"
+    )
+
+    print(
+        f"   YouTube uploads:    {len(uploaded_videos)}"
     )
 
     print()
@@ -1402,12 +1570,23 @@ def process_video():
             "match selected clip count"
         )
 
+    if len(uploaded_videos) != len(clips):
+
+        raise RuntimeError(
+            "❌ YouTube upload count does not "
+            "match selected clip count"
+        )
+
     print(
         "=" * 70
     )
 
     print(
         "✅ PROCESS COMPLETE"
+    )
+
+    print(
+        "📺 All selected Shorts uploaded to YouTube"
     )
 
     print(
