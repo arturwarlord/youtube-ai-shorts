@@ -17,6 +17,7 @@ from video.source import (
 from audio.whisper import transcribe_with_language
 from ai.clip_selector import select_clips
 from ai.metadata import generate_metadata
+from video.thumbnails import create_thumbnail
 
 from video.clip_renderer import render_clips
 from video.subtitles import (
@@ -1178,6 +1179,17 @@ def process_video():
             f"📁 {metadata_path}"
         )
 
+    thumbnail_path = CLIPS_DIR / f"clip_{index:02d}_thumbnail.jpg"
+
+    create_thumbnail(
+        final_path,
+        metadata_path,
+        thumbnail_path,
+    )
+
+print(
+    f"🖼️ Thumbnail created: {thumbnail_path}"
+)
     # --------------------------------------------------------
     # FINAL CHECK
     # --------------------------------------------------------
