@@ -25,7 +25,7 @@ from video.subtitles import (
     burn_subtitles,
 )
 
-from youtube.uploader import upload_video
+from youtube.upload import upload_video
 
 
 # ============================================================
