@@ -16,6 +16,8 @@ from video.source import (
 
 from audio.whisper import transcribe_with_language
 from ai.clip_selector import select_clips
+from ai.metadata import generate_metadata
+
 from video.clip_renderer import render_clips
 from video.subtitles import (
     create_ass_subtitles,
@@ -33,23 +35,16 @@ CLIPS_DIR = Path("output/clips")
 
 RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
 
-# Максимальное количество видео, которые проверяем
 RUTUBE_MAX_VIDEOS = 20
 
-# Минимальная длительность исходного видео
-# 20 минут = 1200 секунд
 MIN_SOURCE_DURATION = 20 * 60
 
-# Максимальное количество клипов
 MAX_CLIPS = 3
 
-# Максимальная высота исходного видео
 MAX_VIDEO_HEIGHT = 720
 
-# Таймаут скачивания одного видео
 DOWNLOAD_TIMEOUT = 25 * 60
 
-# Сколько секунд ждать между попытками
 RETRY_DELAY = 3
 
 
@@ -63,8 +58,8 @@ def parse_duration(value):
 
     Поддерживает:
       - int / float
-      - строки HH:MM:SS
-      - строки MM:SS
+      - HH:MM:SS
+      - MM:SS
     """
 
     if value is None:
@@ -122,7 +117,7 @@ def format_duration(seconds):
 
 def clean_source_file():
     """
-    Удаляем старый source.mp4 перед новым скачиванием.
+    Удаляет старый source.mp4.
     """
 
     SOURCE_VIDEO.parent.mkdir(
@@ -138,10 +133,22 @@ def clean_source_file():
 def print_video_info(video, index=None):
     title = video.get("title") or "Unknown title"
     video_id = video.get("id") or "unknown"
-    duration = parse_duration(video.get("duration"))
-    url = video.get("webpage_url") or video.get("url") or ""
 
-    prefix = f"[{index}] " if index is not None else ""
+    duration = parse_duration(
+        video.get("duration")
+    )
+
+    url = (
+        video.get("webpage_url")
+        or video.get("url")
+        or ""
+    )
+
+    prefix = (
+        f"[{index}] "
+        if index is not None
+        else ""
+    )
 
     print(
         f"{prefix}{title}\n"
@@ -158,52 +165,62 @@ def print_video_info(video, index=None):
 def get_rutube_videos():
     """
     Получает список видео с RUTUBE-канала.
-
-    Используется yt-dlp как extractor:
-        https://rutube.ru/channel/23968031/
-
-    Канал поддерживается актуальным yt-dlp через RutubeChannelIE.
     """
 
     print("=" * 70)
     print("📺 RUTUBE")
     print("=" * 70)
 
-    print(f"Channel: {RUTUBE_CHANNEL_URL}")
+    print(
+        f"Channel: {RUTUBE_CHANNEL_URL}"
+    )
+
     print()
 
     ydl_opts = {
         "quiet": False,
         "no_warnings": False,
-
-        # Получаем только метаданные.
         "extract_flat": True,
-
-        # Не скачиваем видео на этом этапе.
         "skip_download": True,
-
-        # Не загружаем плейлист целиком.
         "playlistend": RUTUBE_MAX_VIDEOS,
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+        with yt_dlp.YoutubeDL(
+            ydl_opts
+        ) as ydl:
+
             info = ydl.extract_info(
                 RUTUBE_CHANNEL_URL,
                 download=False,
             )
 
     except Exception as e:
+
         print()
-        print("❌ Failed to read RUTUBE channel")
-        print(f"Error: {e}")
+        print(
+            "❌ Failed to read RUTUBE channel"
+        )
+
+        print(
+            f"Error: {e}"
+        )
+
         return []
 
     if not info:
-        print("❌ RUTUBE returned no information")
+
+        print(
+            "❌ RUTUBE returned no information"
+        )
+
         return []
 
-    entries = info.get("entries") or []
+    entries = (
+        info.get("entries")
+        or []
+    )
 
     videos = []
 
@@ -212,7 +229,6 @@ def get_rutube_videos():
         if not entry:
             continue
 
-        # extract_flat может вернуть URL + metadata
         video = dict(entry)
 
         video_id = video.get("id")
@@ -220,19 +236,25 @@ def get_rutube_videos():
         if not video_id:
             continue
 
-        # RUTUBE extractor обычно даёт webpage_url.
-        webpage_url = video.get("webpage_url")
+        webpage_url = (
+            video.get("webpage_url")
+        )
 
         if not webpage_url:
+
             webpage_url = (
-                f"https://rutube.ru/video/{video_id}/"
+                f"https://rutube.ru/video/"
+                f"{video_id}/"
             )
 
         video["webpage_url"] = webpage_url
 
         videos.append(video)
 
-    print(f"Found {len(videos)} channel entries")
+    print(
+        f"Found {len(videos)} channel entries"
+    )
+
     print()
 
     return videos
@@ -240,13 +262,13 @@ def get_rutube_videos():
 
 def get_video_details(video):
     """
-    Получает полную информацию о конкретном RUTUBE видео.
-
-    Это нужно потому, что flat playlist может не содержать
-    полной длительности/метаданных.
+    Получает полную информацию
+    о конкретном RUTUBE-видео.
     """
 
-    url = video.get("webpage_url")
+    url = video.get(
+        "webpage_url"
+    )
 
     if not url:
         return None
@@ -259,7 +281,9 @@ def get_video_details(video):
 
     try:
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(
+            ydl_opts
+        ) as ydl:
 
             info = ydl.extract_info(
                 url,
@@ -271,7 +295,8 @@ def get_video_details(video):
     except Exception as e:
 
         print(
-            f"⚠️ Could not read video details: {e}"
+            f"⚠️ Could not read "
+            f"video details: {e}"
         )
 
         return None
@@ -280,13 +305,6 @@ def get_video_details(video):
 def select_rutube_videos(videos):
     """
     Выбирает подходящие длинные видео.
-
-    Правила:
-      - есть ID;
-      - есть длительность;
-      - длительность >= 20 минут;
-      - не Shorts;
-      - сортировка по дате публикации, новое сначала.
     """
 
     print("=" * 70)
@@ -300,21 +318,16 @@ def select_rutube_videos(videos):
         start=1,
     ):
 
-        url = video.get("webpage_url")
+        url = video.get(
+            "webpage_url"
+        )
 
         if not url:
             continue
 
-        # ----------------------------------------------------
-        # Если duration уже есть — используем его.
-        # Если нет — получаем полную информацию.
-        # ----------------------------------------------------
-
         duration = parse_duration(
             video.get("duration")
         )
-
-        full_info = None
 
         if duration is None:
 
@@ -322,8 +335,8 @@ def select_rutube_videos(videos):
                 f"Checking metadata: {url}"
             )
 
-            full_info = get_video_details(
-                video
+            full_info = (
+                get_video_details(video)
             )
 
             if not full_info:
@@ -343,10 +356,6 @@ def select_rutube_videos(videos):
 
             continue
 
-        # ----------------------------------------------------
-        # Минимальная длительность
-        # ----------------------------------------------------
-
         if duration < MIN_SOURCE_DURATION:
 
             print(
@@ -357,12 +366,9 @@ def select_rutube_videos(videos):
 
             continue
 
-        # ----------------------------------------------------
-        # Исключаем Shorts
-        # ----------------------------------------------------
-
         title = (
-            video.get("title") or ""
+            video.get("title")
+            or ""
         ).lower()
 
         if "shorts" in title:
@@ -374,10 +380,6 @@ def select_rutube_videos(videos):
 
             continue
 
-        # ----------------------------------------------------
-        # Добавляем кандидата
-        # ----------------------------------------------------
-
         upload_date = video.get(
             "upload_date"
         )
@@ -386,17 +388,21 @@ def select_rutube_videos(videos):
 
             try:
 
-                sort_date = datetime.strptime(
-                    upload_date,
-                    "%Y%m%d",
-                ).replace(
-                    tzinfo=timezone.utc
+                sort_date = (
+                    datetime.strptime(
+                        upload_date,
+                        "%Y%m%d",
+                    ).replace(
+                        tzinfo=timezone.utc
+                    )
                 )
 
             except Exception:
 
-                sort_date = datetime.min.replace(
-                    tzinfo=timezone.utc
+                sort_date = (
+                    datetime.min.replace(
+                        tzinfo=timezone.utc
+                    )
                 )
 
         else:
@@ -409,37 +415,47 @@ def select_rutube_videos(videos):
 
                 try:
 
-                    sort_date = datetime.fromtimestamp(
-                        timestamp,
-                        tz=timezone.utc,
+                    sort_date = (
+                        datetime.fromtimestamp(
+                            timestamp,
+                            tz=timezone.utc,
+                        )
                     )
 
                 except Exception:
 
-                    sort_date = datetime.min.replace(
-                        tzinfo=timezone.utc
+                    sort_date = (
+                        datetime.min.replace(
+                            tzinfo=timezone.utc
+                        )
                     )
 
             else:
 
-                sort_date = datetime.min.replace(
-                    tzinfo=timezone.utc
+                sort_date = (
+                    datetime.min.replace(
+                        tzinfo=timezone.utc
+                    )
                 )
 
         video["_sort_date"] = sort_date
 
         candidates.append(video)
 
-    # Новые видео первыми
     candidates.sort(
-        key=lambda x: x.get("_sort_date"),
+        key=lambda x: x.get(
+            "_sort_date"
+        ),
         reverse=True,
     )
 
     print()
+
     print(
-        f"Suitable videos: {len(candidates)}"
+        f"Suitable videos: "
+        f"{len(candidates)}"
     )
+
     print()
 
     for index, video in enumerate(
@@ -463,16 +479,14 @@ def select_rutube_videos(videos):
 
 def download_rutube_video(video):
     """
-    Скачивает конкретное RUTUBE видео в:
+    Скачивает RUTUBE-видео в:
 
         input/source.mp4
-
-    Используем yt-dlp + ffmpeg.
-
-    Render pipeline не затрагивается.
     """
 
-    url = video.get("webpage_url")
+    url = video.get(
+        "webpage_url"
+    )
 
     if not url:
 
@@ -482,16 +496,23 @@ def download_rutube_video(video):
 
         return False
 
-    title = video.get(
-        "title"
-    ) or "Unknown"
+    title = (
+        video.get("title")
+        or "Unknown"
+    )
 
     print("=" * 70)
     print("⬇️ DOWNLOADING RUTUBE VIDEO")
     print("=" * 70)
 
-    print(f"Title: {title}")
-    print(f"URL:   {url}")
+    print(
+        f"Title: {title}"
+    )
+
+    print(
+        f"URL:   {url}"
+    )
+
     print()
 
     clean_source_file()
@@ -500,16 +521,6 @@ def download_rutube_video(video):
         parents=True,
         exist_ok=True,
     )
-
-    # --------------------------------------------------------
-    # Формат:
-    #
-    # bestvideo до 720p + bestaudio
-    # fallback на combined format
-    #
-    # Для RUTUBE yt-dlp сам получает доступные formats
-    # через extractor.
-    # --------------------------------------------------------
 
     ydl_opts = {
         "outtmpl": str(
@@ -527,24 +538,20 @@ def download_rutube_video(video):
 
         "merge_output_format": "mp4",
 
-        # ffmpeg
         "ffmpeg_location": "ffmpeg",
 
-        # Сетевые настройки
         "socket_timeout": 30,
 
-        # Повторные попытки
         "retries": 5,
+
         "fragment_retries": 5,
 
-        # Не оставляем лишние файлы
         "keepvideo": False,
 
-        # Вывод
         "quiet": False,
+
         "no_warnings": False,
 
-        # Не скачивать плейлист
         "noplaylist": True,
     }
 
@@ -564,6 +571,7 @@ def download_rutube_video(video):
         )
 
         print()
+
         print(
             f"Download finished in "
             f"{elapsed:.1f}s"
@@ -572,6 +580,7 @@ def download_rutube_video(video):
     except Exception as e:
 
         print()
+
         print(
             "❌ RUTUBE download failed"
         )
@@ -584,10 +593,6 @@ def download_rutube_video(video):
 
         return False
 
-    # --------------------------------------------------------
-    # Проверяем результат
-    # --------------------------------------------------------
-
     if SOURCE_VIDEO.exists():
 
         size_mb = (
@@ -597,6 +602,7 @@ def download_rutube_video(video):
         )
 
         print()
+
         print(
             "✅ source.mp4 created"
         )
@@ -616,11 +622,6 @@ def download_rutube_video(video):
             return False
 
         return True
-
-    # --------------------------------------------------------
-    # Иногда yt-dlp/ffmpeg может оставить другой extension.
-    # Ищем его.
-    # --------------------------------------------------------
 
     possible_files = list(
         SOURCE_VIDEO.parent.glob(
@@ -647,7 +648,8 @@ def download_rutube_video(video):
 
         source = max(
             possible_files,
-            key=lambda p: p.stat().st_size,
+            key=lambda p:
+            p.stat().st_size,
         )
 
         print(
@@ -655,7 +657,6 @@ def download_rutube_video(video):
             f"{source}"
         )
 
-        # Конвертируем в MP4 через ffmpeg.
         try:
 
             subprocess.run(
@@ -694,52 +695,41 @@ def download_rutube_video(video):
             return True
 
     print(
-        "❌ input/source.mp4 was not created"
+        "❌ input/source.mp4 "
+        "was not created"
     )
 
     return False
 
 
 def find_and_download():
-    """
-    Основная логика:
-
-        RUTUBE channel
-              ↓
-        список видео
-              ↓
-        фильтр
-              ↓
-        новое длинное видео
-              ↓
-        download
-              ↓
-        fallback на следующий кандидат
-    """
 
     videos = get_rutube_videos()
 
     if not videos:
 
         raise RuntimeError(
-            "❌ No videos found on RUTUBE channel."
+            "❌ No videos found "
+            "on RUTUBE channel."
         )
 
-    candidates = select_rutube_videos(
-        videos
+    candidates = (
+        select_rutube_videos(
+            videos
+        )
     )
 
     if not candidates:
 
         raise RuntimeError(
-            "❌ No suitable long RUTUBE videos found."
+            "❌ No suitable long "
+            "RUTUBE videos found."
         )
 
     print("=" * 70)
     print("🎯 DOWNLOAD CANDIDATES")
     print("=" * 70)
 
-    # Не больше 5 попыток.
     candidates_to_try = candidates[:5]
 
     for index, video in enumerate(
@@ -748,27 +738,35 @@ def find_and_download():
     ):
 
         print()
+
         print(
             f"Attempt {index}/"
             f"{len(candidates_to_try)}"
         )
 
-        print_video_info(video)
+        print_video_info(
+            video
+        )
 
         if download_rutube_video(
             video
         ):
 
             print()
+
             print(
                 "🎉 RUTUBE source ready"
             )
 
             return True
 
-        if index < len(candidates_to_try):
+        if (
+            index
+            < len(candidates_to_try)
+        ):
 
             print()
+
             print(
                 f"Waiting {RETRY_DELAY}s "
                 f"before next video..."
@@ -779,49 +777,23 @@ def find_and_download():
             )
 
     raise RuntimeError(
-        "❌ None of the RUTUBE candidates "
-        "could be downloaded."
+        "❌ None of the RUTUBE "
+        "candidates could be downloaded."
     )
 
 
 # ============================================================
-# PROCESS
+# PROCESS VIDEO
 # ============================================================
 
 def process_video():
-    """
-    Основной pipeline:
-
-        source
-          ↓
-        validation
-          ↓
-        audio
-          ↓
-        Whisper
-          ↓
-        Gemini
-          ↓
-        Render
-          ↓
-        Subtitles
-          ↓
-        Final Shorts
-
-    ВАЖНО:
-
-    RUTUBE download не изменён.
-    Whisper не изменён.
-    Gemini не изменён.
-    Render не изменён.
-    """
 
     print("=" * 70)
     print("🎬 PROCESS VIDEO")
     print("=" * 70)
 
     # --------------------------------------------------------
-    # Validate
+    # 1. Validate
     # --------------------------------------------------------
 
     if not SOURCE_VIDEO.exists():
@@ -831,6 +803,7 @@ def process_video():
         )
 
     print()
+
     print(
         "1️⃣ Validating source video..."
     )
@@ -838,10 +811,6 @@ def process_video():
     validate_source_video(
         SOURCE_VIDEO
     )
-
-    # --------------------------------------------------------
-    # Duration
-    # --------------------------------------------------------
 
     duration = get_duration(
         SOURCE_VIDEO
@@ -853,10 +822,11 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # Extract audio
+    # 2. Audio
     # --------------------------------------------------------
 
     print()
+
     print(
         "2️⃣ Extracting audio..."
     )
@@ -872,28 +842,35 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # Whisper
+    # 3. Whisper
     # --------------------------------------------------------
 
     print()
+
     print(
         "3️⃣ Transcribing with Whisper..."
     )
 
-    transcript = transcribe_with_language(
-        AUDIO_FILE,
+    transcript = (
+        transcribe_with_language(
+            AUDIO_FILE,
+        )
     )
 
     if not transcript:
 
         raise RuntimeError(
-            "❌ Whisper returned empty transcript"
+            "❌ Whisper returned "
+            "empty transcript"
         )
 
-    if not transcript.get("words"):
+    if not transcript.get(
+        "words"
+    ):
 
         raise RuntimeError(
-            "❌ Whisper returned no word timestamps"
+            "❌ Whisper returned "
+            "no word timestamps"
         )
 
     print(
@@ -906,10 +883,11 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # Gemini
+    # 4. Gemini — select clips
     # --------------------------------------------------------
 
     print()
+
     print(
         "4️⃣ Selecting clips with Gemini..."
     )
@@ -922,12 +900,15 @@ def process_video():
     if not clips:
 
         raise RuntimeError(
-            "❌ Gemini did not return clips"
+            "❌ Gemini did not "
+            "return clips"
         )
 
     print()
+
     print(
-        f"Selected clips: {len(clips)}"
+        f"Selected clips: "
+        f"{len(clips)}"
     )
 
     for index, clip in enumerate(
@@ -936,6 +917,7 @@ def process_video():
     ):
 
         print()
+
         print(
             f"Clip {index}:"
         )
@@ -949,10 +931,11 @@ def process_video():
         )
 
     # --------------------------------------------------------
-    # Render
+    # 5. Render
     # --------------------------------------------------------
 
     print()
+
     print(
         "5️⃣ Rendering Shorts..."
     )
@@ -974,35 +957,51 @@ def process_video():
             "❌ No clips were rendered"
         )
 
-    if len(rendered) != len(clips):
+    if len(rendered) != len(
+        clips
+    ):
 
         raise RuntimeError(
-            "❌ Number of rendered clips "
-            "does not match selected clips"
+            "❌ Number of rendered "
+            "clips does not match "
+            "selected clips"
         )
 
     print()
+
     print(
         f"✅ Rendered clips: "
         f"{len(rendered)}"
     )
 
     # --------------------------------------------------------
-    # Subtitles
+    # 6 + 7. Subtitles + Metadata
     # --------------------------------------------------------
 
     print()
+
     print(
         "6️⃣ Adding subtitles..."
     )
 
+    print()
+
+    print(
+        "7️⃣ Generating metadata..."
+    )
+
     final_videos = []
+
+    metadata_files = []
 
     for index, (
         rendered_path,
         clip,
     ) in enumerate(
-        zip(rendered, clips),
+        zip(
+            rendered,
+            clips,
+        ),
         start=1,
     ):
 
@@ -1016,13 +1015,19 @@ def process_video():
             / f"clip_{index:02d}_final.mp4"
         )
 
+        metadata_path = (
+            CLIPS_DIR
+            / f"clip_{index:02d}_metadata.json"
+        )
+
         print()
+
         print(
             "=" * 60
         )
 
         print(
-            f"💬 Subtitle clip "
+            f"🎬 Processing clip "
             f"{index}/{len(clips)}"
         )
 
@@ -1047,23 +1052,28 @@ def process_video():
         )
 
         print(
+            f"Metadata: "
+            f"{metadata_path}"
+        )
+
+        print(
             "=" * 60
         )
 
         # ----------------------------------------------------
-        # Создаём ASS-субтитры
+        # SUBTITLES
         # ----------------------------------------------------
 
         create_ass_subtitles(
             transcript["words"],
-            float(clip["start"]),
-            float(clip["end"]),
+            float(
+                clip["start"]
+            ),
+            float(
+                clip["end"]
+            ),
             subtitle_path,
         )
-
-        # ----------------------------------------------------
-        # Вшиваем субтитры в видео
-        # ----------------------------------------------------
 
         burn_subtitles(
             rendered_path,
@@ -1074,29 +1084,122 @@ def process_video():
         if not final_path.exists():
 
             raise RuntimeError(
-                "❌ Final subtitle video "
-                f"was not created: {final_path}"
+                "❌ Final subtitle "
+                "video was not created: "
+                f"{final_path}"
             )
 
         final_videos.append(
             str(final_path)
         )
 
+        # ----------------------------------------------------
+        # METADATA
+        # ----------------------------------------------------
+
+        print()
+
+        print(
+            f"🤖 Generating metadata "
+            f"for clip {index}..."
+        )
+
+        metadata = generate_metadata(
+            clip
+        )
+
+        if not metadata:
+
+            raise RuntimeError(
+                "❌ Metadata generation "
+                f"failed for clip {index}"
+            )
+
+        # ----------------------------------------------------
+        # Сохраняем JSON
+        # ----------------------------------------------------
+
+        metadata_path.write_text(
+            json.dumps(
+                metadata,
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        metadata_files.append(
+            str(metadata_path)
+        )
+
+        print()
+
+        print(
+            "✅ Metadata created"
+        )
+
+        print(
+            f"Title: "
+            f"{metadata.get('title', '')}"
+        )
+
+        print(
+            "Description:"
+        )
+
+        print(
+            metadata.get(
+                "description",
+                "",
+            )
+        )
+
+        print(
+            "Hashtags: "
+            + " ".join(
+                metadata.get(
+                    "hashtags",
+                    [],
+                )
+            )
+        )
+
+        print(
+            "Tags: "
+            + ", ".join(
+                metadata.get(
+                    "tags",
+                    [],
+                )
+            )
+        )
+
+        print(
+            f"📁 {metadata_path}"
+        )
+
     # --------------------------------------------------------
-    # Final check
+    # FINAL CHECK
     # --------------------------------------------------------
 
     print()
+
     print(
         "=" * 70
     )
 
     print(
-        "🎉 SUBTITLED SHORTS READY"
+        "🎉 SHORTS PIPELINE READY"
     )
 
     print(
         "=" * 70
+    )
+
+    print()
+
+    print(
+        "🎬 Final videos:"
     )
 
     for index, video_path in enumerate(
@@ -1104,7 +1207,9 @@ def process_video():
         start=1,
     ):
 
-        path = Path(video_path)
+        path = Path(
+            video_path
+        )
 
         size_mb = (
             path.stat().st_size
@@ -1113,15 +1218,33 @@ def process_video():
         )
 
         print(
-            f"✅ Clip {index}: "
+            f"  ✅ Clip {index}: "
             f"{path}"
         )
 
         print(
-            f"   Size: {size_mb:.2f} MB"
+            f"     Size: "
+            f"{size_mb:.2f} MB"
         )
 
     print()
+
+    print(
+        "📝 Metadata files:"
+    )
+
+    for index, metadata_path in enumerate(
+        metadata_files,
+        start=1,
+    ):
+
+        print(
+            f"  ✅ Clip {index}: "
+            f"{metadata_path}"
+        )
+
+    print()
+
     print(
         "=" * 70
     )
@@ -1142,9 +1265,11 @@ def process_video():
 def main():
 
     print()
+
     print(
         "🚀 RUTUBE AI SHORTS"
     )
+
     print()
 
     if "--download" in sys.argv:
@@ -1170,11 +1295,6 @@ def main():
         process_video()
 
         return
-
-    # --------------------------------------------------------
-    # Default:
-    # download + process
-    # --------------------------------------------------------
 
     print(
         "Mode: DOWNLOAD + PROCESS"
