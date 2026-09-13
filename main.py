@@ -1187,9 +1187,9 @@ def process_video():
         thumbnail_path,
     )
 
-print(
-    f"🖼️ Thumbnail created: {thumbnail_path}"
-)
+    print(
+        f"🖼️ Thumbnail created: {thumbnail_path}"
+    )
     # --------------------------------------------------------
     # FINAL CHECK
     # --------------------------------------------------------
