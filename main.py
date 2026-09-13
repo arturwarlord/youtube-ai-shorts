@@ -729,7 +729,7 @@ def process_video():
     print("4️⃣ Selecting clips with Gemini...")
 
     clips = select_clips(
-        transcript,
+        transcript["words"],
         max_clips=MAX_CLIPS,
     )
 
