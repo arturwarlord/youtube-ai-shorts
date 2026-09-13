@@ -1,5 +1,6 @@
 import os
 import subprocess
+import json
 from pathlib import Path
 
 
@@ -71,15 +72,6 @@ def render_clip(
     Cut a segment from a source video and convert it to 9:16.
 
     The original source audio is preserved.
-
-    Args:
-        source_video: path to the original long video
-        output_path: path for resulting Short
-        start: start time in seconds
-        end: end time in seconds
-
-    Returns:
-        output_path
     """
 
     source_video = Path(source_video)
@@ -120,7 +112,11 @@ def render_clip(
     print("Audio: original")
     print("")
 
-    # Get source dimensions.
+    # ---------------------------------------------------------
+    # Get source dimensions using ffprobe JSON.
+    # This is more reliable than parsing CSV output.
+    # ---------------------------------------------------------
+
     probe_command = [
         "ffprobe",
         "-v",
@@ -130,7 +126,7 @@ def render_clip(
         "-show_entries",
         "stream=width,height",
         "-of",
-        "csv=s=x:p=0",
+        "json",
         str(source_video),
     ]
 
@@ -147,16 +143,22 @@ def render_clip(
             f"{probe_result.stderr}"
         )
 
-    dimensions = probe_result.stdout.strip()
-
     try:
-        source_width, source_height = map(
-            int,
-            dimensions.split("x"),
-        )
-    except Exception:
+        probe_data = json.loads(probe_result.stdout)
+
+        streams = probe_data.get("streams", [])
+
+        if not streams:
+            raise ValueError("No video stream found")
+
+        source_width = int(streams[0]["width"])
+        source_height = int(streams[0]["height"])
+
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise RuntimeError(
-            f"Unable to determine source dimensions: {dimensions}"
+            f"Unable to determine source dimensions.\n"
+            f"ffprobe output:\n{probe_result.stdout}\n"
+            f"Error: {error}"
         )
 
     print(
@@ -164,20 +166,9 @@ def render_clip(
         f"{source_width}x{source_height}"
     )
 
+    # ---------------------------------------------------------
     # Center crop to 9:16.
-    #
-    # We calculate a crop that preserves the largest possible
-    # 9:16 area from the original video.
-    #
-    # For landscape videos:
-    #     crop height = full source height
-    #     crop width  = height * 9 / 16
-    #
-    # For portrait videos:
-    #     crop width = full source width
-    #     crop height = width * 16 / 9
-    #
-    # FFmpeg's crop expression handles both cases dynamically.
+    # ---------------------------------------------------------
 
     crop_filter = (
         "crop="
@@ -262,17 +253,10 @@ def render_clips(
 ):
     """
     Render multiple selected clips.
-
-    Args:
-        source_video: original long video
-        clips: list returned by ai.clip_selector.select_clips()
-        output_dir: directory for generated Shorts
-
-    Returns:
-        list of generated file paths
     """
 
     output_dir = Path(output_dir)
+
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -281,6 +265,7 @@ def render_clips(
     rendered = []
 
     for index, clip in enumerate(clips, start=1):
+
         start = float(clip["start"])
         end = float(clip["end"])
 
@@ -291,7 +276,10 @@ def render_clips(
 
         print("")
         print("=" * 60)
-        print(f"🎬 Rendering clip {index}/{len(clips)}")
+        print(
+            f"🎬 Rendering clip "
+            f"{index}/{len(clips)}"
+        )
         print("=" * 60)
 
         render_clip(
@@ -304,4 +292,3 @@ def render_clips(
         rendered.append(str(output_path))
 
     return rendered
-
