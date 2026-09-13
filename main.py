@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import re
 import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
@@ -51,6 +52,24 @@ MAX_VIDEO_HEIGHT = 720
 DOWNLOAD_TIMEOUT = 25 * 60
 
 RETRY_DELAY = 3
+
+# ============================================================
+# GEMINI RETRY
+# ============================================================
+
+# Максимальное количество повторных попыток Gemini
+# при ошибке 429 RESOURCE_EXHAUSTED.
+GEMINI_MAX_RETRIES = 10
+
+# Небольшой запас к времени, которое сообщает Gemini.
+# Например:
+# Please retry in 33.5s
+# реально ждём 35.0s.
+GEMINI_RETRY_BUFFER = 1.5
+
+# Если Gemini вернул 429, но время ожидания
+# в тексте ошибки определить не удалось.
+GEMINI_DEFAULT_RETRY_DELAY = 60
 
 
 # ============================================================
@@ -161,6 +180,260 @@ def print_video_info(video, index=None):
         f"    Duration: {format_duration(duration)}\n"
         f"    URL: {url}"
     )
+
+
+# ============================================================
+# GEMINI RETRY HELPERS
+# ============================================================
+
+def is_gemini_rate_limit_error(error):
+    """
+    Проверяет, является ли ошибка Gemini
+    ошибкой 429 RESOURCE_EXHAUSTED.
+
+    Мы специально не анализируем/не меняем сам
+    Gemini selection. Только определяем,
+    можно ли повторить запрос.
+    """
+
+    error_text = str(error).lower()
+
+    if "429" in error_text:
+        return True
+
+    if "resource_exhausted" in error_text:
+        return True
+
+    if "quota exceeded" in error_text:
+        return True
+
+    if "generate_content_free_tier" in error_text:
+        return True
+
+    return False
+
+
+def get_gemini_retry_delay(error):
+    """
+    Достаёт время ожидания из сообщения Gemini.
+
+    Например Gemini возвращает:
+
+        Please retry in 33.533170356s.
+
+    Функция вернёт:
+
+        33.533170356
+    """
+
+    error_text = str(error)
+
+    patterns = [
+        r"Please retry in\s+([0-9]+(?:\.[0-9]+)?)\s*s",
+        r"retry in\s+([0-9]+(?:\.[0-9]+)?)\s*s",
+        r"retryDelay[\"']?\s*[:=]\s*[\"']?([0-9]+(?:\.[0-9]+)?)s",
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            error_text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+
+            try:
+                return float(
+                    match.group(1)
+                )
+
+            except (
+                ValueError,
+                TypeError,
+            ):
+                pass
+
+    return None
+
+
+def select_clips_with_retry(
+    transcript_words,
+    max_clips,
+):
+    """
+    Вызывает оригинальный select_clips()
+    без изменения его логики.
+
+    Единственное отличие:
+    если Gemini возвращает 429 RESOURCE_EXHAUSTED,
+    ждём ровно столько, сколько рекомендует Gemini,
+    и повторяем тот же запрос.
+
+    Пример:
+
+        429
+        Please retry in 33.5s
+
+        ↓
+
+        sleep 35.0s
+
+        ↓
+
+        select_clips() повторно
+    """
+
+    attempt = 0
+
+    while True:
+
+        attempt += 1
+
+        print()
+
+        if attempt == 1:
+
+            print(
+                "🤖 Calling Gemini clip selector..."
+            )
+
+        else:
+
+            print(
+                f"🤖 Retrying Gemini clip selector "
+                f"(attempt {attempt}/"
+                f"{GEMINI_MAX_RETRIES + 1})..."
+            )
+
+        try:
+
+            # ====================================================
+            # ВАЖНО:
+            # Здесь вызывается оригинальный select_clips()
+            # без каких-либо изменений.
+            # ====================================================
+
+            return select_clips(
+                transcript_words,
+                max_clips=max_clips,
+            )
+
+        except Exception as error:
+
+            if not is_gemini_rate_limit_error(
+                error
+            ):
+
+                # Это НЕ 429.
+                # Оставляем поведение как раньше:
+                # ошибка сразу выходит наружу.
+                raise
+
+            # ----------------------------------------------------
+            # 429 RESOURCE_EXHAUSTED
+            # ----------------------------------------------------
+
+            if (
+                attempt
+                > GEMINI_MAX_RETRIES
+            ):
+
+                print()
+
+                print(
+                    "❌ Gemini rate limit "
+                    "retry limit exceeded."
+                )
+
+                print(
+                    f"Maximum retries: "
+                    f"{GEMINI_MAX_RETRIES}"
+                )
+
+                raise
+
+            retry_delay = (
+                get_gemini_retry_delay(
+                    error
+                )
+            )
+
+            if retry_delay is None:
+
+                retry_delay = (
+                    GEMINI_DEFAULT_RETRY_DELAY
+                )
+
+                print()
+
+                print(
+                    "⚠️ Gemini returned 429, "
+                    "but retry time could not "
+                    "be detected."
+                )
+
+                print(
+                    f"Using default wait: "
+                    f"{retry_delay:.1f}s"
+                )
+
+            else:
+
+                print()
+
+                print(
+                    "⚠️ Gemini rate limit "
+                    "reached."
+                )
+
+                print(
+                    f"⏳ Gemini requested retry "
+                    f"in {retry_delay:.3f}s"
+                )
+
+            # Добавляем небольшой запас,
+            # чтобы не повторить запрос ровно
+            # в момент окончания лимита.
+            wait_time = (
+                retry_delay
+                + GEMINI_RETRY_BUFFER
+            )
+
+            print(
+                f"⏳ Waiting "
+                f"{wait_time:.1f}s "
+                f"before retry..."
+            )
+
+            # Показываем обратный отсчёт
+            # в Actions, чтобы было понятно,
+            # что процесс не завис.
+            remaining = wait_time
+
+            while remaining > 0:
+
+                sleep_for = min(
+                    10,
+                    remaining,
+                )
+
+                print(
+                    f"   ⏱ {remaining:.1f}s remaining..."
+                )
+
+                time.sleep(
+                    sleep_for
+                )
+
+                remaining -= sleep_for
+
+            print()
+
+            print(
+                "🔄 Retrying Gemini request..."
+            )
 
 
 # ============================================================
@@ -897,7 +1170,21 @@ def process_video():
         "4️⃣ Selecting clips with Gemini..."
     )
 
-    clips = select_clips(
+    # ========================================================
+    # ВАЖНО:
+    #
+    # Сам select_clips() НЕ ИЗМЕНЁН.
+    #
+    # Добавлен только внешний retry для 429.
+    # Если Gemini сообщает:
+    #
+    # Please retry in 33.533170356s
+    #
+    # скрипт ждёт это время + небольшой запас
+    # и повторяет ТОТ ЖЕ запрос.
+    # ========================================================
+
+    clips = select_clips_with_retry(
         transcript["words"],
         max_clips=MAX_CLIPS,
     )
