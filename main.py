@@ -39,7 +39,7 @@ CLIPS_DIR = Path("output/clips")
 
 RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
 
-RUTUBE_MAX_VIDEOS = 20
+RUTUBE_MAX_VIDEOS = 50
 
 MIN_SOURCE_DURATION = 20 * 60
 
@@ -70,6 +70,206 @@ GEMINI_RETRY_BUFFER = 1.5
 # Если Gemini вернул 429, но время ожидания
 # в тексте ошибки определить не удалось.
 GEMINI_DEFAULT_RETRY_DELAY = 60
+
+# ============================================================
+# PROCESSING HISTORY
+# ============================================================
+
+# This file is intentionally stored in the repository so GitHub
+# Actions runs remember which RUTUBE source videos were already
+# processed and published.
+HISTORY_FILE = Path("data/processed_videos.json")
+SOURCE_INFO_FILE = Path("input/source.json")
+
+# Filled during --download and recovered during --process.
+SELECTED_SOURCE_VIDEO_INFO = {}
+
+
+def load_processing_history():
+    """Load persistent RUTUBE processing history."""
+
+    if not HISTORY_FILE.exists():
+        return {"videos": {}}
+
+    try:
+        data = json.loads(
+            HISTORY_FILE.read_text(encoding="utf-8")
+        )
+    except Exception as error:
+        print(
+            f"⚠️ Could not read {HISTORY_FILE}: {error}"
+        )
+        return {"videos": {}}
+
+    if not isinstance(data, dict):
+        return {"videos": {}}
+
+    videos = data.get("videos")
+
+    if not isinstance(videos, dict):
+        data["videos"] = {}
+
+    return data
+
+
+def save_processing_history(history):
+    """Atomically save processing history."""
+
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_file = HISTORY_FILE.with_suffix(".tmp")
+
+    temp_file.write_text(
+        json.dumps(
+            history,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    temp_file.replace(HISTORY_FILE)
+
+
+def save_source_info(video):
+    """Persist the selected source between --download and --process."""
+
+    SOURCE_INFO_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    SOURCE_INFO_FILE.write_text(
+        json.dumps(video, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+
+def load_source_info():
+    """Recover selected source metadata for a separate --process run."""
+
+    if not SOURCE_INFO_FILE.exists():
+        return {}
+
+    try:
+        data = json.loads(
+            SOURCE_INFO_FILE.read_text(encoding="utf-8")
+        )
+    except Exception as error:
+        print(
+            f"⚠️ Could not read {SOURCE_INFO_FILE}: {error}"
+        )
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def mark_video_processed(video, clips, uploaded_videos):
+    """Record a source only after all selected Shorts were uploaded."""
+
+    video_id = str(video.get("id") or "").strip()
+
+    if not video_id:
+        print("⚠️ Cannot persist history: source video ID is missing.")
+        return False
+
+    history = load_processing_history()
+
+    clip_records = []
+
+    for index, clip in enumerate(clips):
+        youtube_id = (
+            uploaded_videos[index]
+            if index < len(uploaded_videos)
+            else None
+        )
+
+        clip_records.append({
+            "start": float(clip["start"]),
+            "end": float(clip["end"]),
+            "youtube_video_id": youtube_id,
+        })
+
+    history["videos"][video_id] = {
+        "id": video_id,
+        "title": video.get("title") or "",
+        "webpage_url": video.get("webpage_url") or "",
+        "upload_date": video.get("upload_date") or "",
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "clips": clip_records,
+    }
+
+    save_processing_history(history)
+
+    print()
+    print("💾 Processing history updated")
+    print(f"   Source ID: {video_id}")
+    print(f"   History:   {HISTORY_FILE}")
+
+    return True
+
+
+def persist_history_to_git():
+    """Commit/push processing history when running inside GitHub Actions."""
+
+    if not os.environ.get("GITHUB_ACTIONS"):
+        print("ℹ️ Local run: processing history was saved locally.")
+        return True
+
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        subprocess.run(
+            ["git", "add", str(HISTORY_FILE)],
+            check=True,
+        )
+
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", str(HISTORY_FILE)],
+        )
+
+        if diff.returncode == 0:
+            print("ℹ️ Processing history has no new Git changes.")
+            return True
+
+        subprocess.run(
+            [
+                "git",
+                "commit",
+                "-m",
+                "chore: update processed video history",
+            ],
+            check=True,
+        )
+
+        subprocess.run(
+            ["git", "push"],
+            check=True,
+        )
+
+        print("✅ Processing history pushed to GitHub")
+        return True
+
+    except subprocess.CalledProcessError as error:
+        print()
+        print("⚠️ Could not persist processing history to GitHub.")
+        print(
+            "Make sure the workflow has "
+            "permissions: contents: write."
+        )
+        print(f"Git error: {error}")
+        return False
 
 
 # ============================================================
@@ -139,10 +339,8 @@ def format_duration(seconds):
     return f"{minutes:02d}:{secs:02d}"
 
 
-def clean_source_file():
-    """
-    Удаляет старый source.mp4.
-    """
+def clean_source_file(remove_source_info=False):
+    """Удаляет старый source.mp4 и, при необходимости, его metadata."""
 
     SOURCE_VIDEO.parent.mkdir(
         parents=True,
@@ -152,6 +350,10 @@ def clean_source_file():
     if SOURCE_VIDEO.exists():
         print("🗑 Removing old source.mp4")
         SOURCE_VIDEO.unlink()
+
+    if remove_source_info and SOURCE_INFO_FILE.exists():
+        print("🗑 Removing old source.json")
+        SOURCE_INFO_FILE.unlink()
 
 
 def print_video_info(video, index=None):
@@ -581,13 +783,21 @@ def get_video_details(video):
 
 
 def select_rutube_videos(videos):
-    """
-    Выбирает подходящие длинные видео.
-    """
+    """Выбирает подходящие длинные и ещё не обработанные видео."""
 
     print("=" * 70)
     print("🔎 FILTERING RUTUBE VIDEOS")
     print("=" * 70)
+
+    history = load_processing_history()
+    processed_ids = {
+        str(video_id)
+        for video_id in history.get("videos", {}).keys()
+    }
+
+    print(
+        f"Previously processed sources: {len(processed_ids)}"
+    )
 
     candidates = []
 
@@ -601,6 +811,19 @@ def select_rutube_videos(videos):
         )
 
         if not url:
+            continue
+
+        video_id = str(video.get("id") or "").strip()
+
+        if not video_id:
+            continue
+
+        if video_id in processed_ids:
+            print(
+                f"⏭ Already processed: "
+                f"{video.get('title', 'Unknown')} "
+                f"(ID: {video_id})"
+            )
             continue
 
         duration = parse_duration(
@@ -793,7 +1016,7 @@ def download_rutube_video(video):
 
     print()
 
-    clean_source_file()
+    clean_source_file(remove_source_info=True)
 
     SOURCE_VIDEO.parent.mkdir(
         parents=True,
@@ -899,6 +1122,9 @@ def download_rutube_video(video):
 
             return False
 
+        save_source_info(video)
+        print(f"💾 Source metadata saved: {SOURCE_INFO_FILE}")
+
         return True
 
     possible_files = list(
@@ -970,6 +1196,9 @@ def download_rutube_video(video):
                 "input/source.mp4"
             )
 
+            save_source_info(video)
+            print(f"💾 Source metadata saved: {SOURCE_INFO_FILE}")
+
             return True
 
     print(
@@ -1008,7 +1237,12 @@ def find_and_download():
     print("🎯 DOWNLOAD CANDIDATES")
     print("=" * 70)
 
-    candidates_to_try = candidates[:5]
+    candidates_to_try = candidates[:10]
+
+    if not candidates_to_try:
+        raise RuntimeError(
+            "❌ All recent RUTUBE sources were already processed."
+        )
 
     for index, video in enumerate(
         candidates_to_try,
@@ -1066,9 +1300,25 @@ def find_and_download():
 
 def process_video():
 
+    global SELECTED_SOURCE_VIDEO_INFO
+
     print("=" * 70)
     print("🎬 PROCESS VIDEO")
     print("=" * 70)
+
+    if not SELECTED_SOURCE_VIDEO_INFO:
+        SELECTED_SOURCE_VIDEO_INFO = load_source_info()
+
+    if SELECTED_SOURCE_VIDEO_INFO:
+        print()
+        print(
+            "📺 Source: "
+            f"{SELECTED_SOURCE_VIDEO_INFO.get('title', 'Unknown')}"
+        )
+        print(
+            "🆔 Source ID: "
+            f"{SELECTED_SOURCE_VIDEO_INFO.get('id', 'unknown')}"
+        )
 
     # --------------------------------------------------------
     # 1. Validate
@@ -1862,6 +2112,26 @@ def process_video():
         raise RuntimeError(
             "❌ YouTube upload count does not "
             "match selected clip count"
+        )
+
+    # --------------------------------------------------------
+    # PERSIST SOURCE HISTORY
+    # --------------------------------------------------------
+
+    if SELECTED_SOURCE_VIDEO_INFO:
+        history_saved = mark_video_processed(
+            SELECTED_SOURCE_VIDEO_INFO,
+            clips,
+            uploaded_videos,
+        )
+
+        if history_saved:
+            persist_history_to_git()
+    else:
+        print()
+        print(
+            "⚠️ Source metadata is unavailable; "
+            "processed source was not added to history."
         )
 
     print(
