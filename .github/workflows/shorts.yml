@@ -2,11 +2,17 @@ name: AI Shorts Generator
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "0 9 * * *"
     - cron: "0 15 * * *"
     - cron: "0 21 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-shorts-generator
+  cancel-in-progress: false
 
 jobs:
   generate:
@@ -14,16 +20,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # =====================================================
-      # 1. Download project
-      # =====================================================
-
       - name: Download project
         uses: actions/checkout@v4
-
-      # =====================================================
-      # 2. Python
-      # =====================================================
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -31,28 +29,16 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      # =====================================================
-      # 3. FFmpeg
-      # =====================================================
-
       - name: Install ffmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      # =====================================================
-      # 4. Whisper cache
-      # =====================================================
-
-      - name: Cache Whisper model
+      - name: Whisper cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/whisper
           key: whisper-tiny-v1
-
-      # =====================================================
-      # 5. Python packages
-      # =====================================================
 
       - name: Install packages
         run: |
@@ -60,49 +46,30 @@ jobs:
           pip install -r requirements.txt
           pip install --upgrade "yt-dlp[default]"
 
-      # =====================================================
-      # 6. Check tools
-      # =====================================================
-
       - name: Check tools
         run: |
           echo "Python:"
           python --version
-
           echo ""
           echo "yt-dlp:"
           yt-dlp --version
-
           echo ""
           echo "ffmpeg:"
           ffmpeg -version | head -n 1
-
-      # =====================================================
-      # 7. Prepare folders
-      # =====================================================
 
       - name: Prepare input
         run: |
           mkdir -p input
           mkdir -p output
           mkdir -p output/clips
-
           rm -f input/source.mp4
+          rm -f input/source.json
           rm -f output/source_audio.wav
-
           echo "Folders prepared"
-
-      # =====================================================
-      # 8. Download RUTUBE source
-      # =====================================================
 
       - name: Find and download RUTUBE video
         run: |
           python main.py --download
-
-      # =====================================================
-      # 9. Check source video
-      # =====================================================
 
       - name: Check downloaded video
         run: |
@@ -115,22 +82,15 @@ jobs:
           echo "======================================"
           echo "SOURCE VIDEO"
           echo "======================================"
-
           ls -lh input/source.mp4
-
           echo ""
           echo "VIDEO INFORMATION"
-
           ffprobe \
             -v error \
             -show_entries format=duration,size \
             -show_entries stream=codec_name,width,height \
             -of default=noprint_wrappers=1 \
             input/source.mp4
-
-      # =====================================================
-      # 10. AI processing
-      # =====================================================
 
       - name: Run AI
         env:
@@ -140,10 +100,6 @@ jobs:
           YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
         run: |
           python main.py --process
-
-      # =====================================================
-      # 11. Save generated files
-      # =====================================================
 
       - name: Save generated files
         if: always()
