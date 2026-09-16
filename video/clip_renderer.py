@@ -9,34 +9,40 @@ import numpy as np
 WIDTH = 1080
 HEIGHT = 1920
 
-# ============================================================
-# FACE TRACKING SETTINGS
-# ============================================================
-
-# Анализируем примерно 1 кадр каждые N секунд.
+# Анализ лица каждые 0.20 секунды.
 TRACK_INTERVAL = 0.20
 
-# Уменьшаем кадр перед распознаванием лица для скорости.
-FACE_SCALE = 0.5
+# Минимальная уверенность детектора.
+FACE_CONFIDENCE = 0.45
 
-# Параметры Haar detector.
-FACE_MIN_NEIGHBORS = 5
-FACE_MIN_SIZE = 40
+# Насколько плавно камера следует за лицом.
+SMOOTHING = 0.20
 
-# Насколько сильно камера может двигаться за один шаг.
-# Чем меньше значение — тем плавнее движение.
-MAX_MOVE_PER_FRAME = 0.035
+# Ограничение резкого движения камеры.
+MAX_MOVE_RATIO = 0.035
 
-# Сглаживание движения камеры.
-SMOOTHING = 0.18
-
-# Лицо будет немного выше центра вертикального видео.
-# Это оставляет место для субтитров снизу.
+# Немного поднимаем лицо относительно центра.
+# Отрицательное значение = выше.
 FACE_VERTICAL_BIAS = -0.08
 
-# Минимальная доля лица относительно ширины кадра,
-# чтобы не принимать очень маленькие ложные лица.
-MIN_FACE_RATIO = 0.025
+
+# ============================================================
+# MODEL PATH
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+MODEL_DIR = BASE_DIR / "models"
+
+PROTOTXT = (
+    MODEL_DIR
+    / "deploy.prototxt"
+)
+
+MODEL = (
+    MODEL_DIR
+    / "res10_300x300_ssd_iter_140000.caffemodel"
+)
 
 
 # ============================================================
@@ -44,7 +50,6 @@ MIN_FACE_RATIO = 0.025
 # ============================================================
 
 def _run_ffmpeg(command):
-    """Run FFmpeg command and raise a readable error if it fails."""
 
     print("🎬 Running FFmpeg...")
 
@@ -56,10 +61,12 @@ def _run_ffmpeg(command):
     )
 
     if result.returncode != 0:
+
         print(result.stderr)
 
         raise RuntimeError(
-            f"FFmpeg failed with exit code {result.returncode}"
+            "FFmpeg failed with exit code "
+            f"{result.returncode}"
         )
 
     return result
@@ -69,17 +76,18 @@ def _run_ffmpeg(command):
 # VIDEO INFO
 # ============================================================
 
-def get_video_duration(video_path):
-    """Get video duration using ffprobe."""
+def _get_video_dimensions(video_path):
 
     command = [
         "ffprobe",
         "-v",
         "error",
+        "-select_streams",
+        "v:0",
         "-show_entries",
-        "format=duration",
+        "stream=width,height",
         "-of",
-        "default=noprint_wrappers=1:nokey=1",
+        "json",
         str(video_path),
     ]
 
@@ -91,118 +99,86 @@ def get_video_duration(video_path):
     )
 
     if result.returncode != 0:
+
         raise RuntimeError(
-            f"Unable to read video duration: {result.stderr}"
+            "Unable to inspect video:\n"
+            f"{result.stderr}"
         )
 
-    return float(result.stdout.strip())
+    data = json.loads(
+        result.stdout
+    )
 
+    streams = data.get(
+        "streams",
+        [],
+    )
 
-# ============================================================
-# CENTER CROP
-# ============================================================
+    if not streams:
 
-def _center_crop_box(
-    source_width,
-    source_height,
-    target_ratio=9 / 16,
-):
-    """Return centered 9:16 crop rectangle."""
-
-    source_ratio = source_width / source_height
-
-    if source_ratio > target_ratio:
-
-        crop_height = source_height
-        crop_width = int(
-            round(crop_height * target_ratio)
+        raise RuntimeError(
+            "No video stream found"
         )
-
-    else:
-
-        crop_width = source_width
-        crop_height = int(
-            round(crop_width / target_ratio)
-        )
-
-    crop_width = min(
-        crop_width,
-        source_width,
-    )
-
-    crop_height = min(
-        crop_height,
-        source_height,
-    )
-
-    x = max(
-        0,
-        (source_width - crop_width) // 2,
-    )
-
-    y = max(
-        0,
-        (source_height - crop_height) // 2,
-    )
 
     return (
-        x,
-        y,
-        crop_width,
-        crop_height,
+        int(streams[0]["width"]),
+        int(streams[0]["height"]),
     )
 
 
 # ============================================================
-# LOAD FACE DETECTORS
+# LOAD DNN FACE DETECTOR
 # ============================================================
 
-def _load_face_detectors():
-    """
-    Load several OpenCV face detectors.
+def _load_face_detector():
 
-    We use both frontal and profile cascades because
-    people in podcasts/interviews are not always looking
-    directly into the camera.
-    """
+    print("")
+    print("🧠 Loading DNN face detector...")
 
-    haar_dir = Path(
-        cv2.data.haarcascades
+    if not PROTOTXT.exists():
+
+        raise FileNotFoundError(
+            "Missing face detector config:\n"
+            f"{PROTOTXT}\n\n"
+            "Create models/deploy.prototxt"
+        )
+
+    if not MODEL.exists():
+
+        raise FileNotFoundError(
+            "Missing face detector model:\n"
+            f"{MODEL}\n\n"
+            "Download "
+            "res10_300x300_ssd_iter_140000.caffemodel "
+            "and put it into models/"
+        )
+
+    print(
+        f"📄 Config: {PROTOTXT}"
     )
 
-    detectors = []
+    print(
+        f"🧠 Model: {MODEL}"
+    )
 
-    detector_files = [
-        "haarcascade_frontalface_default.xml",
-        "haarcascade_frontalface_alt2.xml",
-        "haarcascade_profileface.xml",
-    ]
+    detector = cv2.dnn.readNetFromCaffe(
+        str(PROTOTXT),
+        str(MODEL),
+    )
 
-    for filename in detector_files:
+    detector.setPreferableBackend(
+        cv2.dnn.DNN_BACKEND_OPENCV
+    )
 
-        path = haar_dir / filename
+    detector.setPreferableTarget(
+        cv2.dnn.DNN_TARGET_CPU
+    )
 
-        if not path.exists():
-            print(
-                f"⚠️ Haar detector missing: {path}"
-            )
-            continue
+    print(
+        "✅ DNN face detector loaded"
+    )
 
-        detector = cv2.CascadeClassifier(
-            str(path)
-        )
-
-        if detector.empty():
-            print(
-                f"⚠️ Failed to load detector: {path}"
-            )
-            continue
-
-        detectors.append(
-            detector
-        )
-
-    return detectors
+    return detector
 
 
 # ============================================================
@@ -211,141 +187,135 @@ def _load_face_detectors():
 
 def _detect_faces(
     frame,
-    detectors,
-    source_width,
+    detector,
 ):
     """
-    Detect faces in a frame.
-
-    Returns:
-        list of:
-        (x, y, width, height)
+    Detect faces using OpenCV DNN SSD.
     """
 
-    if frame is None:
-        return []
-
-    gray = cv2.cvtColor(
-        frame,
-        cv2.COLOR_BGR2GRAY,
+    height, width = (
+        frame.shape[:2]
     )
 
-    if FACE_SCALE != 1.0:
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(
+            frame,
+            (300, 300),
+        ),
+        1.0,
+        (300, 300),
+        (104.0, 177.0, 123.0),
+    )
 
-        small = cv2.resize(
-            gray,
-            None,
-            fx=FACE_SCALE,
-            fy=FACE_SCALE,
-            interpolation=cv2.INTER_AREA,
+    detector.setInput(
+        blob
+    )
+
+    detections = detector.forward()
+
+    faces = []
+
+    for i in range(
+        detections.shape[2]
+    ):
+
+        confidence = float(
+            detections[
+                0,
+                0,
+                i,
+                2,
+            ]
         )
 
-    else:
+        if confidence < FACE_CONFIDENCE:
+            continue
 
-        small = gray
+        box = (
+            detections[
+                0,
+                0,
+                i,
+                3:7,
+            ]
+            * np.array(
+                [
+                    width,
+                    height,
+                    width,
+                    height,
+                ]
+            )
+        )
 
-    min_face_width = max(
-        FACE_MIN_SIZE,
-        int(source_width * MIN_FACE_RATIO * FACE_SCALE),
-    )
+        x1, y1, x2, y2 = (
+            box.astype(int)
+        )
 
-    found = []
+        x1 = max(
+            0,
+            min(
+                x1,
+                width - 1,
+            ),
+        )
 
-    for detector in detectors:
+        y1 = max(
+            0,
+            min(
+                y1,
+                height - 1,
+            ),
+        )
 
-        try:
+        x2 = max(
+            0,
+            min(
+                x2,
+                width - 1,
+            ),
+        )
 
-            faces = detector.detectMultiScale(
-                small,
-                scaleFactor=1.08,
-                minNeighbors=FACE_MIN_NEIGHBORS,
-                minSize=(
-                    min_face_width,
-                    min_face_width,
+        y2 = max(
+            0,
+            min(
+                y2,
+                height - 1,
+            ),
+        )
+
+        face_width = x2 - x1
+        face_height = y2 - y1
+
+        if (
+            face_width <= 0
+            or face_height <= 0
+        ):
+            continue
+
+        faces.append(
+            {
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "width": face_width,
+                "height": face_height,
+                "confidence": confidence,
+                "center_x": (
+                    x1 + x2
+                ) / 2,
+                "center_y": (
+                    y1 + y2
+                ) / 2,
+                "area": (
+                    face_width
+                    * face_height
                 ),
-            )
-
-        except Exception as error:
-
-            print(
-                f"⚠️ Face detector error: {error}"
-            )
-
-            continue
-
-        if faces is None:
-            continue
-
-        scale_back = (
-            1.0 / FACE_SCALE
+            }
         )
 
-        for x, y, w, h in faces:
-
-            x = int(
-                round(x * scale_back)
-            )
-
-            y = int(
-                round(y * scale_back)
-            )
-
-            w = int(
-                round(w * scale_back)
-            )
-
-            h = int(
-                round(h * scale_back)
-            )
-
-            if w <= 0 or h <= 0:
-                continue
-
-            found.append(
-                (
-                    x,
-                    y,
-                    w,
-                    h,
-                )
-            )
-
-    # Remove duplicate detections.
-    unique = []
-
-    for face in found:
-
-        x, y, w, h = face
-
-        duplicate = False
-
-        for ux, uy, uw, uh in unique:
-
-            cx = x + w / 2
-            cy = y + h / 2
-
-            ucx = ux + uw / 2
-            ucy = uy + uh / 2
-
-            distance = (
-                (cx - ucx) ** 2
-                + (cy - ucy) ** 2
-            ) ** 0.5
-
-            if distance < max(
-                w,
-                h,
-                uw,
-                uh,
-            ) * 0.5:
-
-                duplicate = True
-                break
-
-        if not duplicate:
-            unique.append(face)
-
-    return unique
+    return faces
 
 
 # ============================================================
@@ -354,63 +324,71 @@ def _detect_faces(
 
 def _choose_face(
     faces,
-    previous_center=None,
-    source_width=None,
-    source_height=None,
+    previous_center,
+    source_width,
+    source_height,
 ):
     """
-    Select the most useful face.
+    Select the speaker face.
 
-    If we already have a tracked face,
-    prefer the face closest to the previous position.
+    First frame:
+        largest/highest confidence face.
 
-    Otherwise prefer the largest face.
+    Following frames:
+        prefer face closest to previous position.
     """
 
     if not faces:
         return None
 
-    if (
-        previous_center is None
-        or source_width is None
-        or source_height is None
-    ):
+    # First detection.
+    if previous_center is None:
 
         return max(
             faces,
-            key=lambda f: f[2] * f[3],
+            key=lambda face: (
+                face["area"]
+                * face["confidence"]
+            ),
         )
 
-    previous_x, previous_y = previous_center
+    previous_x, previous_y = (
+        previous_center
+    )
 
     def score(face):
 
-        x, y, w, h = face
+        dx = (
+            face["center_x"]
+            - previous_x
+        ) / source_width
 
-        center_x = x + w / 2
-        center_y = y + h / 2
+        dy = (
+            face["center_y"]
+            - previous_y
+        ) / source_height
 
         distance = (
-            (
-                center_x - previous_x
-            ) / source_width
-        ) ** 2 + (
-            (
-                center_y - previous_y
-            ) / source_height
-        ) ** 2
-
-        area = (
-            w * h
-        ) / (
-            source_width * source_height
+            dx * dx
+            + dy * dy
         )
 
-        # Closer face gets better score.
-        # Larger face also gets a bonus.
+        area_ratio = (
+            face["area"]
+            / (
+                source_width
+                * source_height
+            )
+        )
+
+        confidence = (
+            face["confidence"]
+        )
+
         return (
-            distance * 4.0
-            - area * 2.0
+            distance * 5.0
+            - area_ratio * 1.5
+            - confidence * 0.25
         )
 
     return min(
@@ -420,7 +398,7 @@ def _choose_face(
 
 
 # ============================================================
-# FACE TRACKING
+# TRACK FACE
 # ============================================================
 
 def _track_face(
@@ -431,24 +409,12 @@ def _track_face(
     source_height,
 ):
     """
-    Track the speaker's face during the entire clip.
-
-    Returns a list of:
-        (time, center_x, center_y)
-
-    The list is later converted into a smooth
-    FFmpeg crop expression.
+    Detect face every TRACK_INTERVAL seconds.
     """
 
-    detectors = _load_face_detectors()
-
-    if not detectors:
-
-        print(
-            "❌ No OpenCV face detectors available."
-        )
-
-        return []
+    detector = (
+        _load_face_detector()
+    )
 
     capture = cv2.VideoCapture(
         str(source_video)
@@ -456,39 +422,37 @@ def _track_face(
 
     if not capture.isOpened():
 
-        print(
-            "❌ Could not open video for face tracking."
+        raise RuntimeError(
+            "Unable to open source video "
+            "for face tracking"
         )
 
-        return []
-
-    clip_duration = max(
-        0.1,
-        float(end) - float(start),
+    duration = (
+        float(end)
+        - float(start)
     )
 
-    # Generate analysis timestamps.
     timestamps = np.arange(
         0.0,
-        clip_duration,
+        duration,
         TRACK_INTERVAL,
     )
 
-    # Always analyze the final moment.
     if (
         len(timestamps) == 0
-        or timestamps[-1]
-        < clip_duration
+        or timestamps[-1] < duration
     ):
 
         timestamps = np.append(
             timestamps,
-            clip_duration,
+            duration,
         )
 
     tracked = []
 
     previous_center = None
+
+    detected_count = 0
 
     for relative_time in timestamps:
 
@@ -502,15 +466,17 @@ def _track_face(
             absolute_time * 1000.0,
         )
 
-        ok, frame = capture.read()
+        ok, frame = (
+            capture.read()
+        )
 
         if not ok or frame is None:
+
             continue
 
         faces = _detect_faces(
             frame,
-            detectors,
-            source_width,
+            detector,
         )
 
         selected = _choose_face(
@@ -522,8 +488,6 @@ def _track_face(
 
         if selected is None:
 
-            # No detection on this frame.
-            # Keep previous position.
             if previous_center is not None:
 
                 tracked.append(
@@ -536,14 +500,14 @@ def _track_face(
 
             continue
 
-        x, y, w, h = selected
+        detected_count += 1
 
         center_x = (
-            x + w / 2
+            selected["center_x"]
         )
 
         center_y = (
-            y + h / 2
+            selected["center_y"]
         )
 
         previous_center = (
@@ -562,8 +526,9 @@ def _track_face(
     capture.release()
 
     print(
-        f"👤 Face tracking: "
-        f"{len(tracked)} detections"
+        f"👤 Face detections: "
+        f"{detected_count}/"
+        f"{len(timestamps)}"
     )
 
     return tracked
@@ -573,75 +538,76 @@ def _track_face(
 # SMOOTH TRACKING
 # ============================================================
 
-def _smooth_positions(
+def _smooth_tracking(
     tracked,
     source_width,
     source_height,
 ):
     """
-    Smooth face movement.
-
-    This prevents the vertical camera from jumping
-    from left to right when the detector slightly
-    changes the face position.
+    Smooth camera movement.
     """
 
     if not tracked:
         return []
 
-    result = []
+    smoothed = []
 
     current_x = tracked[0][1]
     current_y = tracked[0][2]
 
-    for timestamp, target_x, target_y in tracked:
+    max_x_move = (
+        source_width
+        * MAX_MOVE_RATIO
+    )
 
-        delta_x = (
-            target_x - current_x
+    max_y_move = (
+        source_height
+        * MAX_MOVE_RATIO
+    )
+
+    for (
+        timestamp,
+        target_x,
+        target_y,
+    ) in tracked:
+
+        dx = (
+            target_x
+            - current_x
         )
 
-        delta_y = (
-            target_y - current_y
+        dy = (
+            target_y
+            - current_y
         )
 
-        # Limit sudden camera movement.
-        max_x_move = (
-            source_width
-            * MAX_MOVE_PER_FRAME
-        )
-
-        max_y_move = (
-            source_height
-            * MAX_MOVE_PER_FRAME
-        )
-
-        delta_x = max(
+        dx = max(
             -max_x_move,
             min(
-                delta_x,
+                dx,
                 max_x_move,
             ),
         )
 
-        delta_y = max(
+        dy = max(
             -max_y_move,
             min(
-                delta_y,
+                dy,
                 max_y_move,
             ),
         )
 
         current_x += (
-            delta_x
+            dx
             * SMOOTHING
         )
 
         current_y += (
-            delta_y
+            dy
             * SMOOTHING
         )
 
-        result.append(
+        smoothed.append(
             (
                 timestamp,
                 current_x,
@@ -649,14 +615,65 @@ def _smooth_positions(
             )
         )
 
-    return result
+    return smoothed
 
 
 # ============================================================
-# CREATE FACE-AWARE CROP
+# BUILD PIECEWISE FFmpeg EXPRESSION
 # ============================================================
 
-def _detect_face_crop(
+def _build_expression(
+    points,
+    fallback,
+):
+    """
+    Convert tracking points into FFmpeg
+    piecewise-linear expression.
+    """
+
+    if not points:
+
+        return str(
+            int(round(fallback))
+        )
+
+    expression = str(
+        int(round(points[-1][1]))
+    )
+
+    for i in range(
+        len(points) - 1,
+        0,
+        -1,
+    ):
+
+        t1, p1 = points[i - 1]
+        t2, p2 = points[i]
+
+        if t2 <= t1:
+            continue
+
+        interpolation = (
+            f"({p1:.3f}+"
+            f"({p2:.3f}-{p1:.3f})*"
+            f"(t-{t1:.3f})/"
+            f"({t2:.3f}-{t1:.3f}))"
+        )
+
+        expression = (
+            f"if(lt(t,{t2:.3f}),"
+            f"{interpolation},"
+            f"{expression})"
+        )
+
+    return expression
+
+
+# ============================================================
+# FACE-AWARE CROP
+# ============================================================
+
+def _create_face_crop(
     source_video,
     start,
     end,
@@ -664,20 +681,71 @@ def _detect_face_crop(
     source_height,
 ):
     """
-    Detect and track the main face.
-
-    Returns a crop expression.
-
-    If face tracking fails completely,
-    fall back to center crop.
+    Create dynamic crop based on face position.
     """
 
-    fallback = _center_crop_box(
+    # 9:16 crop.
+    target_ratio = (
+        9 / 16
+    )
+
+    source_ratio = (
+        source_width
+        / source_height
+    )
+
+    if source_ratio > target_ratio:
+
+        crop_height = (
+            source_height
+        )
+
+        crop_width = int(
+            round(
+                crop_height
+                * target_ratio
+            )
+        )
+
+    else:
+
+        crop_width = (
+            source_width
+        )
+
+        crop_height = int(
+            round(
+                crop_width
+                / target_ratio
+            )
+        )
+
+    crop_width = min(
+        crop_width,
         source_width,
+    )
+
+    crop_height = min(
+        crop_height,
         source_height,
     )
 
-    crop_x, crop_y, crop_width, crop_height = fallback
+    max_x = (
+        source_width
+        - crop_width
+    )
+
+    max_y = (
+        source_height
+        - crop_height
+    )
+
+    print("")
+    print(
+        f"📐 Crop area: "
+        f"{crop_width}x"
+        f"{crop_height}"
+    )
 
     tracked = _track_face(
         source_video,
@@ -690,79 +758,29 @@ def _detect_face_crop(
     if not tracked:
 
         print(
-            "👤 No face detected."
+            "⚠️ Face not detected"
         )
 
         print(
-            "↩️ Using center crop."
+            "↩️ Falling back to center crop"
         )
 
-        return fallback, None
+        return (
+            f"crop="
+            f"{crop_width}:"
+            f"{crop_height}:"
+            f"{int(max_x / 2)}:"
+            f"{int(max_y / 2)}"
+        )
 
-    smoothed = _smooth_positions(
+    smoothed = _smooth_tracking(
         tracked,
         source_width,
         source_height,
     )
 
-    if not smoothed:
-
-        return fallback, None
-
-    # --------------------------------------------------------
-    # Calculate initial crop position.
-    # --------------------------------------------------------
-
-    first_x = smoothed[0][1]
-    first_y = smoothed[0][2]
-
-    first_y += (
-        crop_height
-        * FACE_VERTICAL_BIAS
-    )
-
-    initial_x = int(
-        round(
-            first_x
-            - crop_width / 2
-        )
-    )
-
-    initial_y = int(
-        round(
-            first_y
-            - crop_height / 2
-        )
-    )
-
-    initial_x = max(
-        0,
-        min(
-            initial_x,
-            source_width
-            - crop_width,
-        ),
-    )
-
-    initial_y = max(
-        0,
-        min(
-            initial_y,
-            source_height
-            - crop_height,
-        ),
-    )
-
     print(
-        f"🎯 Face tracking enabled"
-    )
-
-    print(
-        f"🎯 Initial crop: "
-        f"x={initial_x}, "
-        f"y={initial_y}, "
-        f"w={crop_width}, "
-        f"h={crop_height}"
+        "🎯 Face tracking ACTIVE"
     )
 
     print(
@@ -770,142 +788,95 @@ def _detect_face_crop(
         f"{len(smoothed)}"
     )
 
-    # --------------------------------------------------------
-    # Convert tracking points into FFmpeg expressions.
-    #
-    # We use a piecewise linear interpolation based on
-    # detected face positions.
-    # --------------------------------------------------------
-
     x_points = []
     y_points = []
 
-    max_x = (
-        source_width
-        - crop_width
-    )
+    for (
+        timestamp,
+        center_x,
+        center_y,
+    ) in smoothed:
 
-    max_y = (
-        source_height
-        - crop_height
-    )
-
-    for timestamp, center_x, center_y in smoothed:
-
+        # Move face slightly upward
+        # in the final vertical composition.
         center_y += (
             crop_height
             * FACE_VERTICAL_BIAS
         )
 
-        target_x = (
+        crop_x = (
             center_x
             - crop_width / 2
         )
 
-        target_y = (
+        crop_y = (
             center_y
             - crop_height / 2
         )
 
-        target_x = max(
+        crop_x = max(
             0,
             min(
-                target_x,
+                crop_x,
                 max_x,
             ),
         )
 
-        target_y = max(
+        crop_y = max(
             0,
             min(
-                target_y,
+                crop_y,
                 max_y,
             ),
         )
 
         x_points.append(
             (
-                float(timestamp),
-                float(target_x),
+                timestamp,
+                crop_x,
             )
         )
 
         y_points.append(
             (
-                float(timestamp),
-                float(target_y),
+                timestamp,
+                crop_y,
             )
         )
 
-    # --------------------------------------------------------
-    # Build FFmpeg expressions.
-    # --------------------------------------------------------
+    initial_x = x_points[0][1]
+    initial_y = y_points[0][1]
 
-    def build_expression(points, fallback):
-
-        if not points:
-            return str(
-                int(round(fallback))
-            )
-
-        expression = str(
-            int(round(points[-1][1]))
+    x_expression = (
+        _build_expression(
+            x_points,
+            initial_x,
         )
-
-        for index in range(
-            len(points) - 1,
-            0,
-            -1,
-        ):
-
-            t1, p1 = points[index - 1]
-            t2, p2 = points[index]
-
-            if t2 <= t1:
-                continue
-
-            # Linear interpolation.
-            interpolation = (
-                f"({p1:.3f}+"
-                f"({p2:.3f}-{p1:.3f})*"
-                f"(t-{t1:.3f})/"
-                f"({t2:.3f}-{t1:.3f}))"
-            )
-
-            expression = (
-                f"if(lt(t,{t2:.3f}),"
-                f"{interpolation},"
-                f"{expression})"
-            )
-
-        return expression
-
-    x_expression = build_expression(
-        x_points,
-        initial_x,
     )
 
-    y_expression = build_expression(
-        y_points,
-        initial_y,
+    y_expression = (
+        _build_expression(
+            y_points,
+            initial_y,
+        )
     )
 
-    crop_expression = (
+    print(
+        f"🎯 Initial X: "
+        f"{initial_x:.1f}"
+    )
+
+    print(
+        f"🎯 Initial Y: "
+        f"{initial_y:.1f}"
+    )
+
+    return (
         f"crop="
         f"{crop_width}:"
         f"{crop_height}:"
         f"{x_expression}:"
         f"{y_expression}"
-    )
-
-    return (
-        (
-            initial_x,
-            initial_y,
-            crop_width,
-            crop_height,
-        ),
-        crop_expression,
     )
 
 
@@ -920,8 +891,7 @@ def render_clip(
     end,
 ):
     """
-    Cut a segment from a source video
-    and convert it to 9:16 with face tracking.
+    Render one 9:16 Short with face tracking.
     """
 
     source_video = Path(
@@ -942,20 +912,14 @@ def render_clip(
     start = float(start)
     end = float(end)
 
-    if end <= start:
+    duration = (
+        end - start
+    )
+
+    if duration <= 0:
 
         raise ValueError(
-            f"Invalid clip range: "
-            f"{start} -> {end}"
-        )
-
-    duration = end - start
-
-    if duration < 1:
-
-        raise ValueError(
-            f"Clip is too short: "
-            f"{duration:.2f}s"
+            "Invalid clip duration"
         )
 
     output_path.parent.mkdir(
@@ -964,164 +928,76 @@ def render_clip(
     )
 
     print("")
-    print("🎞 Creating Short")
+    print(
+        "🎞 Creating Short"
+    )
+
     print(
         f"Source: {source_video}"
     )
+
     print(
         f"Start:  {start:.2f}s"
     )
+
     print(
         f"End:    {end:.2f}s"
     )
+
     print(
         f"Length: {duration:.2f}s"
     )
+
     print(
         "Format: 1080x1920"
     )
+
     print(
         "Audio: original"
     )
+
     print(
-        "Face tracking: ENABLED"
-    )
-    print("")
-
-    # ========================================================
-    # GET SOURCE RESOLUTION
-    # ========================================================
-
-    probe_command = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v:0",
-        "-show_entries",
-        "stream=width,height",
-        "-of",
-        "json",
-        str(source_video),
-    ]
-
-    probe_result = subprocess.run(
-        probe_command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        "Face tracking: DNN"
     )
 
-    if probe_result.returncode != 0:
-
-        raise RuntimeError(
-            "Unable to inspect source video:\n"
-            f"{probe_result.stderr}"
+    source_width, source_height = (
+        _get_video_dimensions(
+            source_video
         )
-
-    try:
-
-        probe_data = json.loads(
-            probe_result.stdout
-        )
-
-        streams = probe_data.get(
-            "streams",
-            [],
-        )
-
-        if not streams:
-            raise ValueError(
-                "No video stream found"
-            )
-
-        source_width = int(
-            streams[0]["width"]
-        )
-
-        source_height = int(
-            streams[0]["height"]
-        )
-
-    except (
-        json.JSONDecodeError,
-        KeyError,
-        TypeError,
-        ValueError,
-    ) as error:
-
-        raise RuntimeError(
-            "Unable to determine "
-            "source dimensions.\n"
-            f"ffprobe output:\n"
-            f"{probe_result.stdout}\n"
-            f"Error: {error}"
-        )
+    )
 
     print(
         f"📐 Source resolution: "
-        f"{source_width}x{source_height}"
+        f"{source_width}x"
+        f"{source_height}"
     )
 
-    # ========================================================
-    # FACE TRACKING
-    # ========================================================
-
-    (
-        crop_box,
-        dynamic_crop,
-    ) = _detect_face_crop(
-        source_video,
-        start,
-        end,
-        source_width,
-        source_height,
-    )
-
-    crop_x, crop_y, crop_width, crop_height = (
-        crop_box
-    )
-
-    # If face tracking succeeded,
-    # dynamic_crop contains time-based X/Y.
-    if dynamic_crop:
-
-        crop_filter = (
-            dynamic_crop
-            + ","
-            "scale=1080:1920:"
-            "force_original_aspect_ratio=decrease,"
-            "pad=1080:1920:"
-            "(ow-iw)/2:"
-            "(oh-ih)/2"
+    crop_filter = (
+        _create_face_crop(
+            source_video,
+            start,
+            end,
+            source_width,
+            source_height,
         )
-
-    else:
-
-        crop_filter = (
-            f"crop="
-            f"{crop_width}:"
-            f"{crop_height}:"
-            f"{crop_x}:"
-            f"{crop_y},"
-            "scale=1080:1920:"
-            "force_original_aspect_ratio=decrease,"
-            "pad=1080:1920:"
-            "(ow-iw)/2:"
-            "(oh-ih)/2"
-        )
-
-    print(
-        f"🎥 FFmpeg crop filter:"
     )
 
-    print(
+    # Scale after crop.
+    video_filter = (
         crop_filter
+        + ","
+        + "scale=1080:1920"
+        + ":flags=lanczos"
     )
 
-    # ========================================================
-    # FFMPEG
-    # ========================================================
+    print("")
+    print(
+        "🎥 FFmpeg filter:"
+    )
+
+    print(
+        video_filter
+    )
 
     command = [
         "ffmpeg",
@@ -1137,7 +1013,7 @@ def render_clip(
         str(duration),
 
         "-vf",
-        crop_filter,
+        video_filter,
 
         "-c:v",
         "libx264",
@@ -1173,25 +1049,28 @@ def render_clip(
     if not output_path.exists():
 
         raise RuntimeError(
-            "FFmpeg finished but output "
-            f"was not created: "
-            f"{output_path}"
+            "Output video was not created"
         )
 
     size_mb = (
         output_path.stat().st_size
-        / (1024 * 1024)
+        / (
+            1024 * 1024
+        )
     )
 
     print("")
-    print("✅ Short created")
+    print(
+        "✅ Short created"
+    )
+
     print(
         f"📁 {output_path}"
     )
+
     print(
         f"💾 {size_mb:.2f} MB"
     )
-    print("")
 
     return str(
         output_path
@@ -1207,7 +1086,9 @@ def render_clips(
     clips,
     output_dir="output/clips",
 ):
-    """Render multiple selected clips."""
+    """
+    Render all selected clips.
+    """
 
     output_dir = Path(
         output_dir
@@ -1225,19 +1106,6 @@ def render_clips(
         start=1,
     ):
 
-        start = float(
-            clip["start"]
-        )
-
-        end = float(
-            clip["end"]
-        )
-
-        output_path = (
-            output_dir
-            / f"clip_{index:02d}.mp4"
-        )
-
         print("")
         print(
             "=" * 60
@@ -1252,11 +1120,24 @@ def render_clips(
             "=" * 60
         )
 
+        start = float(
+            clip["start"]
+        )
+
+        end = float(
+            clip["end"]
+        )
+
+        output_path = (
+            output_dir
+            / f"clip_{index:02d}.mp4"
+        )
+
         render_clip(
-            source_video=source_video,
-            output_path=output_path,
-            start=start,
-            end=end,
+            source_video,
+            output_path,
+            start,
+            end,
         )
 
         rendered.append(
