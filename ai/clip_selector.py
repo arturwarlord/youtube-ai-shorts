@@ -5,6 +5,11 @@ from typing import List, Dict
 
 from google import genai
 
+try:
+    from json_repair import repair_json
+except ImportError:
+    repair_json = None
+
 
 MODEL = "gemini-flash-lite-latest"
 MIN_CLIP_DURATION = 20
@@ -20,33 +25,127 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 
+def _clean_response_text(text: str) -> str:
+    """
+    Remove common Markdown wrappers around Gemini JSON.
+    """
+    text = (text or "").strip()
+
+    # Remove ```json ... ``` or ``` ... ```
+    text = re.sub(
+        r"^\s*```(?:json)?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s*```\s*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return text.strip()
+
+
+def _candidate_json_strings(text: str):
+    """
+    Return likely JSON portions of a Gemini response.
+    """
+    text = _clean_response_text(text)
+
+    candidates = [text]
+
+    # Prefer the JSON array because select_clips expects an array.
+    start = text.find("[")
+    end = text.rfind("]")
+
+    if start >= 0 and end > start:
+        candidates.append(text[start:end + 1])
+
+    return candidates
+
+
+def _repair_json_fallback(text: str):
+    """
+    Small fallback for common Gemini formatting mistakes when
+    json-repair is not installed.
+
+    This does NOT change the clip-selection logic. It only attempts
+    to turn an almost-valid JSON response into valid JSON.
+    """
+    repaired = text.strip()
+
+    # Remove trailing commas before } or ].
+    repaired = re.sub(
+        r",\s*([}\]])",
+        r"\1",
+        repaired,
+    )
+
+    # Normalize smart quotes that Gemini can occasionally emit.
+    repaired = (
+        repaired
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+    )
+
+    return repaired
+
+
 def _extract_json(text: str):
     """
-    Extract JSON from Gemini response.
-    Handles both plain JSON and ```json ... ``` responses.
+    Extract and parse JSON from Gemini response.
+
+    Gemini normally returns valid JSON, but occasionally returns
+    almost-valid JSON (for example a trailing comma or a Markdown
+    wrapper). We first use the standard JSON parser, then fall back
+    to json-repair if available.
+
+    This function only repairs/parses the response. The selection
+    prompt and selection logic remain unchanged.
     """
-    text = text.strip()
+    if not text or not text.strip():
+        raise ValueError("Gemini returned empty JSON response")
 
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"```$", "", text).strip()
+    candidates = _candidate_json_strings(text)
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\[[\s\S]*\]", text)
+    # 1. Strict JSON parsing first.
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
 
-        if not match:
-            raise ValueError("Gemini returned invalid JSON")
+    # 2. Use json-repair for malformed JSON from Gemini.
+    if repair_json is not None:
+        for candidate in candidates:
+            try:
+                repaired = repair_json(candidate)
+                parsed = json.loads(repaired)
+                return parsed
+            except Exception:
+                pass
 
-        return json.loads(match.group(0))
+    # 3. Lightweight fallback if json-repair is unavailable.
+    for candidate in candidates:
+        try:
+            repaired = _repair_json_fallback(candidate)
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(
+        "Gemini returned invalid JSON after all parsing/repair attempts"
+    )
 
 
 def _format_transcript(words: List[Dict]) -> str:
     """
     Convert word-level Whisper timestamps into compact transcript.
     """
-
     lines = []
 
     for word in words:
@@ -101,7 +200,6 @@ def _remove_overlaps(clips: List[Dict]) -> List[Dict]:
     Remove heavily overlapping clips.
     Higher scored clips are kept.
     """
-
     clips = sorted(
         clips,
         key=lambda x: float(x.get("score", 0)),
@@ -145,7 +243,10 @@ def _remove_overlaps(clips: List[Dict]) -> List[Dict]:
         if not overlaps:
             result.append(clip)
 
-    return sorted(result, key=lambda x: x["start"])
+    return sorted(
+        result,
+        key=lambda x: x["start"],
+    )
 
 
 def select_clips(words: List[Dict], max_clips: int = 3) -> List[Dict]:
@@ -164,7 +265,6 @@ def select_clips(words: List[Dict], max_clips: int = 3) -> List[Dict]:
             }
         ]
     """
-
     if not words:
         raise ValueError("Transcript is empty")
 
@@ -179,7 +279,6 @@ Analyze the transcript of a long-form video below and identify the
 BEST self-contained moments that can become viral Shorts.
 
 IMPORTANT:
-
 - Select moments between {MIN_CLIP_DURATION} and {MAX_CLIP_DURATION} seconds.
 - A clip must make sense WITHOUT the viewer watching the full video.
 - Prefer a strong hook in the first few seconds.
@@ -197,7 +296,6 @@ IMPORTANT:
 - Use only timestamps present in the transcript.
 - Do not create overlapping clips when possible.
 - Find up to 10 strong candidates.
-
 Score every candidate from 0 to 100 using:
 
 HOOK:
@@ -222,7 +320,6 @@ Is the idea easy to understand?
 Return ONLY valid JSON.
 
 Format:
-
 [
   {{
     "start": 123.40,
