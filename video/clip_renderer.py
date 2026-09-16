@@ -1,17 +1,25 @@
-import os
-import subprocess
 import json
+import subprocess
 from pathlib import Path
+
+import cv2
+import numpy as np
 
 
 WIDTH = 1080
 HEIGHT = 1920
 
+# Face detection is only used to choose the vertical crop. FFmpeg still
+# performs the actual encoding, subtitles, audio handling, and output.
+FACE_SAMPLE_COUNT = 12
+FACE_SCALE = 0.5
+FACE_MIN_NEIGHBORS = 4
+FACE_MIN_SIZE = 32
+FACE_VERTICAL_BIAS = -0.08
+
 
 def _run_ffmpeg(command):
-    """
-    Run FFmpeg command and raise a readable error if it fails.
-    """
+    """Run FFmpeg command and raise a readable error if it fails."""
 
     print("🎬 Running FFmpeg...")
 
@@ -32,9 +40,7 @@ def _run_ffmpeg(command):
 
 
 def get_video_duration(video_path):
-    """
-    Get video duration using ffprobe.
-    """
+    """Get video duration using ffprobe."""
 
     command = [
         "ffprobe",
@@ -62,17 +68,160 @@ def get_video_duration(video_path):
     return float(result.stdout.strip())
 
 
+def _center_crop_box(source_width, source_height, target_ratio=9 / 16):
+    """Return a centered crop rectangle with the requested aspect ratio."""
+
+    source_ratio = source_width / source_height
+
+    if source_ratio > target_ratio:
+        crop_height = source_height
+        crop_width = int(round(crop_height * target_ratio))
+    else:
+        crop_width = source_width
+        crop_height = int(round(crop_width / target_ratio))
+
+    crop_width = min(crop_width, source_width)
+    crop_height = min(crop_height, source_height)
+
+    x = max(0, (source_width - crop_width) // 2)
+    y = max(0, (source_height - crop_height) // 2)
+
+    return x, y, crop_width, crop_height
+
+
+def _detect_face_crop(source_video, start, end, source_width, source_height):
+    """
+    Detect the dominant face in sampled frames and place the 9:16 crop
+    around it. If no face is detected, fall back to the original center crop.
+
+    The crop is intentionally static for the whole clip: this avoids
+    aggressive camera movement/jitter while still keeping a speaker's face
+    in frame instead of blindly cropping the landscape center.
+    """
+
+    fallback = _center_crop_box(source_width, source_height)
+
+    cascade_path = getattr(
+        cv2.data,
+        "haarcascades",
+        "",
+    )
+    cascade_path = str(
+        Path(cascade_path) / "haarcascade_frontalface_default.xml"
+    )
+
+    if not Path(cascade_path).exists():
+        print("⚠️ OpenCV Haar cascade not found; using center crop.")
+        return fallback
+
+    detector = cv2.CascadeClassifier(cascade_path)
+
+    if detector.empty():
+        print("⚠️ OpenCV face detector could not be loaded; using center crop.")
+        return fallback
+
+    capture = cv2.VideoCapture(str(source_video))
+
+    if not capture.isOpened():
+        print("⚠️ Could not open source for face detection; using center crop.")
+        return fallback
+
+    clip_duration = max(0.1, float(end) - float(start))
+    sample_times = np.linspace(0.0, clip_duration, FACE_SAMPLE_COUNT)
+
+    detected_faces = []
+
+    for relative_time in sample_times:
+        capture.set(
+            cv2.CAP_PROP_POS_MSEC,
+            (float(start) + float(relative_time)) * 1000.0,
+        )
+
+        ok, frame = capture.read()
+
+        if not ok or frame is None:
+            continue
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        if FACE_SCALE != 1.0:
+            small = cv2.resize(
+                gray,
+                None,
+                fx=FACE_SCALE,
+                fy=FACE_SCALE,
+                interpolation=cv2.INTER_AREA,
+            )
+        else:
+            small = gray
+
+        faces = detector.detectMultiScale(
+            small,
+            scaleFactor=1.1,
+            minNeighbors=FACE_MIN_NEIGHBORS,
+            minSize=(FACE_MIN_SIZE, FACE_MIN_SIZE),
+        )
+
+        if len(faces) == 0:
+            continue
+
+        # Convert detections back to source-video coordinates.
+        scale_back = 1.0 / FACE_SCALE
+        scaled_faces = []
+
+        for x, y, width, height in faces:
+            x = int(round(x * scale_back))
+            y = int(round(y * scale_back))
+            width = int(round(width * scale_back))
+            height = int(round(height * scale_back))
+            area = width * height
+            scaled_faces.append((x, y, width, height, area))
+
+        # Largest visible face is the most useful fallback for interviews.
+        scaled_faces.sort(key=lambda item: item[4], reverse=True)
+        detected_faces.append(scaled_faces[0])
+
+    capture.release()
+
+    if not detected_faces:
+        print("👤 No face detected; using center crop.")
+        return fallback
+
+    # Use robust medians so one missed/incorrect frame does not move the crop.
+    centers_x = np.array([x + width / 2 for x, y, width, height, _ in detected_faces])
+    centers_y = np.array([y + height / 2 for x, y, width, height, _ in detected_faces])
+
+    center_x = float(np.median(centers_x))
+    center_y = float(np.median(centers_y))
+
+    crop_x, crop_y, crop_width, crop_height = fallback
+
+    # Slight upward bias keeps eyes/head higher in the vertical frame and
+    # leaves more room below for subtitles.
+    center_y += crop_height * FACE_VERTICAL_BIAS
+
+    crop_x = int(round(center_x - crop_width / 2))
+    crop_y = int(round(center_y - crop_height / 2))
+
+    crop_x = max(0, min(crop_x, source_width - crop_width))
+    crop_y = max(0, min(crop_y, source_height - crop_height))
+
+    print(
+        f"👤 Face-aware crop: x={crop_x}, y={crop_y}, "
+        f"w={crop_width}, h={crop_height}, "
+        f"samples={len(detected_faces)}"
+    )
+
+    return crop_x, crop_y, crop_width, crop_height
+
+
 def render_clip(
     source_video,
     output_path,
     start,
     end,
 ):
-    """
-    Cut a segment from a source video and convert it to 9:16.
-
-    The original source audio is preserved.
-    """
+    """Cut a segment from a source video and convert it to 9:16."""
 
     source_video = Path(source_video)
     output_path = Path(output_path)
@@ -112,11 +261,6 @@ def render_clip(
     print("Audio: original")
     print("")
 
-    # ---------------------------------------------------------
-    # Get source dimensions using ffprobe JSON.
-    # This is more reliable than parsing CSV output.
-    # ---------------------------------------------------------
-
     probe_command = [
         "ffprobe",
         "-v",
@@ -145,7 +289,6 @@ def render_clip(
 
     try:
         probe_data = json.loads(probe_result.stdout)
-
         streams = probe_data.get("streams", [])
 
         if not streams:
@@ -166,16 +309,18 @@ def render_clip(
         f"{source_width}x{source_height}"
     )
 
-    # ---------------------------------------------------------
-    # Center crop to 9:16.
-    # ---------------------------------------------------------
+    crop_x, crop_y, crop_width, crop_height = _detect_face_crop(
+        source_video,
+        start,
+        end,
+        source_width,
+        source_height,
+    )
 
+    # Fixed crop dimensions + fixed position. This is compatible with
+    # every ffmpeg build and avoids center-cropping faces away.
     crop_filter = (
-        "crop="
-        "if(gt(iw/ih\\,9/16)\\,ih*9/16\\,iw):"
-        "if(gt(iw/ih\\,9/16)\\,ih\\,iw*16/9):"
-        "(iw-ow)/2:"
-        "(ih-oh)/2,"
+        f"crop={crop_width}:{crop_height}:{crop_x}:{crop_y},"
         "scale=1080:1920:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
     )
@@ -183,47 +328,30 @@ def render_clip(
     command = [
         "ffmpeg",
         "-y",
-
-        # Accurate seeking.
         "-ss",
         str(start),
-
         "-i",
         str(source_video),
-
         "-t",
         str(duration),
-
-        # Video.
         "-vf",
         crop_filter,
-
         "-c:v",
         "libx264",
-
         "-preset",
         "medium",
-
         "-crf",
         "20",
-
         "-pix_fmt",
         "yuv420p",
-
-        # Original audio.
         "-c:a",
         "aac",
-
         "-b:a",
         "192k",
-
         "-ar",
         "48000",
-
-        # Fast start for web playback.
         "-movflags",
         "+faststart",
-
         str(output_path),
     ]
 
@@ -231,8 +359,7 @@ def render_clip(
 
     if not output_path.exists():
         raise RuntimeError(
-            f"FFmpeg finished but output was not created: "
-            f"{output_path}"
+            f"FFmpeg finished but output was not created: {output_path}"
         )
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
@@ -251,9 +378,7 @@ def render_clips(
     clips,
     output_dir="output/clips",
 ):
-    """
-    Render multiple selected clips.
-    """
+    """Render multiple selected clips."""
 
     output_dir = Path(output_dir)
 
