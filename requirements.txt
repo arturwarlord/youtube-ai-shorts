@@ -15,3 +15,4 @@ google-auth-oauthlib
 yt-dlp
 opencv-python-headless
 json-repair
+opencv-python-headless
