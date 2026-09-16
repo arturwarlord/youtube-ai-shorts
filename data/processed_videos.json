@@ -1,3 +1,23 @@
 {
-  "videos": {}
+  "videos": {
+    "e04c538de803fd3d1a9783b1b6281a39": {
+      "clips": [
+        {
+          "end": 3060.07,
+          "start": 3027.35,
+          "youtube_video_id": "31J1iis4wdA"
+        },
+        {
+          "end": 221.05,
+          "start": 183.61,
+          "youtube_video_id": "n5uCX0ry05g"
+        }
+      ],
+      "id": "e04c538de803fd3d1a9783b1b6281a39",
+      "processed_at": "2026-09-16T09:50:32.019641+00:00",
+      "title": "Профессор MIT: Возможно, мы уже внутри чёрной дыры — Сет Ллойд",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/e04c538de803fd3d1a9783b1b6281a39/"
+    }
+  }
 }
