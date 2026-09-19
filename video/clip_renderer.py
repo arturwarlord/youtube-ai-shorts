@@ -5,130 +5,84 @@ import cv2
 import mediapipe as mp
 
 
-# ============================================================
-# OUTPUT SETTINGS
-# ============================================================
-
 WIDTH = 1080
 HEIGHT = 1920
 
-# How often to analyze the source video for a face
 TRACK_INTERVAL = 0.25
-
-# MediaPipe face detection confidence
 MIN_DETECTION_CONFIDENCE = 0.45
 
-# Position smoothing
 SMOOTHING = 0.18
-
-# Maximum horizontal movement between tracking samples.
-# Prevents the crop from jumping too aggressively.
 MAX_MOVE_RATIO = 0.06
 
 
 # ============================================================
-# MEDIAPIPE
+# MediaPipe
 # ============================================================
-
-_mp_face_detection = None
-
 
 def _load_face_detector():
     """
-    Load MediaPipe Face Detection once.
+    Create MediaPipe face detector.
+
+    model_selection=1 is better for faces that are not extremely
+    close to the camera.
     """
-
-    global _mp_face_detection
-
-    if _mp_face_detection is not None:
-        return _mp_face_detection
-
-    print("🧠 Loading MediaPipe face detector...")
-
-    _mp_face_detection = mp.solutions.face_detection.FaceDetection(
+    return mp.solutions.face_detection.FaceDetection(
         model_selection=1,
         min_detection_confidence=MIN_DETECTION_CONFIDENCE,
     )
 
-    print("✅ MediaPipe face detector loaded.")
-
-    return _mp_face_detection
-
-
-# ============================================================
-# FACE DETECTION
-# ============================================================
 
 def _detect_faces(detector, frame):
     """
-    Detect faces in one BGR OpenCV frame.
+    Detect faces in a BGR OpenCV frame.
 
     Returns:
         [
             {
-                "cx": center_x,
-                "cy": center_y,
+                "x": center_x,
+                "y": center_y,
                 "area": area,
                 "score": confidence,
-            },
-            ...
+            }
         ]
     """
-
-    if frame is None:
+    if frame is None or frame.size == 0:
         return []
 
-    h, w = frame.shape[:2]
-
-    if w <= 0 or h <= 0:
-        return []
-
-    # MediaPipe expects RGB
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    result = detector.process(rgb)
+    results = detector.process(rgb)
 
-    if not result.detections:
+    if not results.detections:
         return []
+
+    height, width = frame.shape[:2]
 
     faces = []
 
-    for detection in result.detections:
+    for detection in results.detections:
+        bbox = detection.location_data.relative_bounding_box
+
+        x = max(0.0, bbox.xmin)
+        y = max(0.0, bbox.ymin)
+
+        w = max(0.0, bbox.width)
+        h = max(0.0, bbox.height)
+
+        center_x = (x + w / 2.0) * width
+        center_y = (y + h / 2.0) * height
+
+        area = (w * width) * (h * height)
 
         score = 0.0
 
         if detection.score:
             score = float(detection.score[0])
 
-        if score < MIN_DETECTION_CONFIDENCE:
-            continue
-
-        bbox = detection.location_data.relative_bounding_box
-
-        x = bbox.xmin * w
-        y = bbox.ymin * h
-        bw = bbox.width * w
-        bh = bbox.height * h
-
-        # Clamp bounding box
-        x1 = max(0.0, min(float(w), x))
-        y1 = max(0.0, min(float(h), y))
-
-        x2 = max(0.0, min(float(w), x + bw))
-        y2 = max(0.0, min(float(h), y + bh))
-
-        bw = max(1.0, x2 - x1)
-        bh = max(1.0, y2 - y1)
-
-        cx = x1 + bw / 2.0
-        cy = y1 + bh / 2.0
-
-        area = bw * bh
-
         faces.append(
             {
-                "cx": cx,
-                "cy": cy,
+                "x": center_x,
+                "y": center_y,
                 "area": area,
                 "score": score,
             }
@@ -137,238 +91,175 @@ def _detect_faces(detector, frame):
     return faces
 
 
-# ============================================================
-# FACE SELECTION
-# ============================================================
-
-def _choose_face(faces, previous_x, frame_width):
+def _choose_face(faces, previous_x=None):
     """
-    Select the most likely face to follow.
+    Choose the most suitable face.
 
-    If we already have a previous position:
-        prefer the face closest to it.
+    If we already have a previous X position,
+    prefer the face closest to it.
 
-    Otherwise:
-        prefer the largest/high-confidence face.
+    Otherwise prefer the largest / most confident face.
     """
-
     if not faces:
         return None
 
-    # --------------------------------------------------------
-    # First detection
-    # --------------------------------------------------------
+    if previous_x is not None:
+        def distance_score(face):
+            distance = abs(face["x"] - previous_x)
 
-    if previous_x is None:
+            confidence_bonus = face["score"] * 100.0
+            area_bonus = min(face["area"] / 10000.0, 100.0)
 
-        return max(
-            faces,
-            key=lambda face: (
-                face["area"] * 0.75
-                + face["score"] * frame_width * frame_width * 0.25
-            ),
+            return distance - confidence_bonus - area_bonus
+
+        return min(faces, key=distance_score)
+
+    def initial_score(face):
+        return (
+            face["area"] * max(face["score"], 0.1)
         )
 
-    # --------------------------------------------------------
-    # Tracking existing face
-    # --------------------------------------------------------
-
-    best_face = None
-    best_score = float("-inf")
-
-    max_area = max(face["area"] for face in faces)
-
-    for face in faces:
-
-        distance = abs(face["cx"] - previous_x)
-
-        # Normalize distance
-        distance_ratio = distance / max(frame_width, 1)
-
-        # Prefer faces near previous position
-        distance_score = max(0.0, 1.0 - distance_ratio)
-
-        # Slight preference for larger faces
-        area_score = face["area"] / max(max_area, 1.0)
-
-        # Detection confidence
-        confidence_score = face["score"]
-
-        score = (
-            distance_score * 0.60
-            + area_score * 0.20
-            + confidence_score * 0.20
-        )
-
-        if score > best_score:
-            best_score = score
-            best_face = face
-
-    return best_face
+    return max(faces, key=initial_score)
 
 
 # ============================================================
-# FACE TRACKING
+# Face tracking
 # ============================================================
 
-def _track_face(video_path, start_time, end_time):
+def _track_face(
+    video_path,
+    clip_start,
+    clip_duration,
+    source_width,
+    source_height,
+):
     """
-    Analyze the clip and return face X positions.
+    Track the face through the selected clip.
 
     Returns:
-        list of:
-            (time, face_center_x)
-
-    If a face disappears temporarily, the previous position
-    is kept.
-
-    If no face is ever detected, returns an empty list.
+        [
+            (time_in_clip, face_center_x)
+        ]
     """
 
-    detector = _load_face_detector()
+    cap = cv2.VideoCapture(str(video_path))
 
-    capture = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(
+            f"Could not open video for face tracking: {video_path}"
+        )
 
-    if not capture.isOpened():
-        print("⚠️ Could not open video for face tracking.")
-        return []
-
-    fps = capture.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS)
 
     if not fps or fps <= 0:
         fps = 25.0
 
-    source_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-    source_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    print(
-        f"🎯 Tracking resolution: "
-        f"{source_width}x{source_height}"
+    if total_frames <= 0:
+        cap.release()
+        return []
+
+    video_duration = total_frames / fps
+
+    start_time = max(0.0, float(clip_start))
+    end_time = min(
+        video_duration,
+        start_time + max(0.0, float(clip_duration)),
     )
+
+    if end_time <= start_time:
+        cap.release()
+        return []
+
+    detector = _load_face_detector()
 
     points = []
 
     previous_x = None
-    detected_count = 0
-    total_samples = 0
-
-    duration = max(0.0, end_time - start_time)
+    smoothed_x = None
 
     sample_time = 0.0
 
-    while sample_time <= duration + 0.001:
-
+    while sample_time <= (end_time - start_time) + 0.001:
         absolute_time = start_time + sample_time
 
-        capture.set(
+        cap.set(
             cv2.CAP_PROP_POS_MSEC,
             absolute_time * 1000.0,
         )
 
-        ok, frame = capture.read()
+        success, frame = cap.read()
 
-        if not ok or frame is None:
+        if not success or frame is None:
             sample_time += TRACK_INTERVAL
             continue
 
-        total_samples += 1
-
-        faces = _detect_faces(detector, frame)
+        faces = _detect_faces(
+            detector,
+            frame,
+        )
 
         face = _choose_face(
             faces,
             previous_x,
-            source_width,
         )
 
         if face is not None:
+            detected_x = float(face["x"])
 
-            current_x = float(face["cx"])
-
-            # ------------------------------------------------
-            # Smooth raw detection
-            # ------------------------------------------------
-
-            if previous_x is not None:
-
-                current_x = (
-                    previous_x * (1.0 - SMOOTHING)
-                    + current_x * SMOOTHING
+            if smoothed_x is None:
+                smoothed_x = detected_x
+            else:
+                smoothed_x = (
+                    smoothed_x * (1.0 - SMOOTHING)
+                    + detected_x * SMOOTHING
                 )
 
-                # ------------------------------------------------
-                # Limit maximum movement
-                # ------------------------------------------------
-
-                max_move = source_width * MAX_MOVE_RATIO
-
-                delta = current_x - previous_x
-
-                if delta > max_move:
-                    current_x = previous_x + max_move
-
-                elif delta < -max_move:
-                    current_x = previous_x - max_move
-
-            previous_x = current_x
-
-            detected_count += 1
+            previous_x = smoothed_x
 
             points.append(
                 (
-                    sample_time,
-                    current_x,
+                    float(sample_time),
+                    float(smoothed_x),
                 )
             )
 
-        else:
-
-            # ------------------------------------------------
-            # Face temporarily disappeared.
-            # Keep the last known position.
-            # ------------------------------------------------
-
-            if previous_x is not None:
-                points.append(
-                    (
-                        sample_time,
-                        previous_x,
-                    )
-                )
-
         sample_time += TRACK_INTERVAL
 
-    capture.release()
-
-    print(
-        f"👤 Face detections: "
-        f"{detected_count}/{total_samples}"
-    )
-
-    if not points:
-        print("❌ No face detected in clip.")
-        print("↩️ Using center crop.")
-
-        return []
-
-    print(
-        f"✅ Face tracking points: {len(points)}"
-    )
+    detector.close()
+    cap.release()
 
     return points
 
 
 # ============================================================
-# SMOOTH TRACKING
+# Crop smoothing
 # ============================================================
 
-def _smooth_tracking(points, crop_w, source_width):
+def _smooth_tracking(
+    points,
+    crop_w,
+    source_width,
+):
     """
-    Additional smoothing and crop-boundary correction.
+    Convert face-center positions into crop X positions.
+
+    Keeps the crop inside the source frame.
     """
 
     if not points:
-        return []
+        center_x = max(
+            0,
+            int(round((source_width - crop_w) / 2)),
+        )
+
+        return [
+            (
+                0.0,
+                float(center_x),
+            )
+        ]
 
     max_x = max(
         0.0,
@@ -379,63 +270,66 @@ def _smooth_tracking(points, crop_w, source_width):
 
     previous_crop_x = None
 
+    max_move = max(
+        1.0,
+        float(source_width) * MAX_MOVE_RATIO,
+    )
+
     for timestamp, face_x in points:
 
-        # We want the face approximately in the middle
-        target_crop_x = face_x - crop_w / 2.0
+        target_x = float(face_x) - (crop_w / 2.0)
 
-        # Keep crop inside source video
-        target_crop_x = max(
+        target_x = max(
             0.0,
-            min(max_x, target_crop_x),
+            min(max_x, target_x),
         )
 
-        if previous_crop_x is not None:
-
-            target_crop_x = (
-                previous_crop_x * (1.0 - SMOOTHING)
-                + target_crop_x * SMOOTHING
-            )
-
-            max_move = source_width * MAX_MOVE_RATIO
-
-            delta = target_crop_x - previous_crop_x
+        if previous_crop_x is None:
+            crop_x = target_x
+        else:
+            delta = target_x - previous_crop_x
 
             if delta > max_move:
-                target_crop_x = previous_crop_x + max_move
-
+                delta = max_move
             elif delta < -max_move:
-                target_crop_x = previous_crop_x - max_move
+                delta = -max_move
 
-        previous_crop_x = target_crop_x
+            crop_x = previous_crop_x + delta
+
+        crop_x = max(
+            0.0,
+            min(max_x, crop_x),
+        )
 
         result.append(
             (
-                timestamp,
-                target_crop_x,
+                float(timestamp),
+                float(crop_x),
             )
         )
+
+        previous_crop_x = crop_x
 
     return result
 
 
 # ============================================================
-# FFMPEG EXPRESSION
+# FFmpeg crop expression
 # ============================================================
 
-def _build_crop_expression(points, crop_w, source_width):
+def _build_crop_expression(
+    points,
+    crop_w,
+    source_width,
+):
     """
-    Build an FFmpeg expression for dynamic X crop.
+    Build a compact FFmpeg expression for dynamic X crop.
 
-    IMPORTANT:
-    The returned expression contains normal FFmpeg commas.
-    They are escaped later by _escape_filter_expression()
-    before being inserted into the crop filter.
+    MediaPipe may produce hundreds of tracking points.
+    FFmpeg does not need all of them.
 
-    Example:
-
-        if(lt(t,1.25),(100+(20.000000)*(t-1.0000)),120)
-
+    We reduce the points to a maximum of 20 keyframes,
+    which keeps the FFmpeg expression small and reliable.
     """
 
     if not points:
@@ -451,53 +345,168 @@ def _build_crop_expression(points, crop_w, source_width):
         float(source_width - crop_w),
     )
 
-    # --------------------------------------------------------
-    # Clamp all points
-    # --------------------------------------------------------
-
     clean_points = []
 
     for timestamp, crop_x in points:
 
+        timestamp = float(timestamp)
+
         crop_x = max(
             0.0,
-            min(max_x, float(crop_x)),
+            min(
+                max_x,
+                float(crop_x),
+            ),
         )
 
         clean_points.append(
             (
-                float(timestamp),
+                timestamp,
                 crop_x,
             )
         )
 
+    if not clean_points:
+        center_x = max(
+            0,
+            int(round((source_width - crop_w) / 2)),
+        )
+
+        return str(center_x)
+
     if len(clean_points) == 1:
-        return str(int(round(clean_points[0][1])))
+        return str(
+            int(
+                round(
+                    clean_points[0][1]
+                )
+            )
+        )
 
     # --------------------------------------------------------
-    # Build piecewise linear expression.
+    # Important:
+    #
+    # MediaPipe tracking is done every 0.25 sec.
+    # A long video can therefore generate hundreds of points.
+    #
+    # FFmpeg's expression evaluator does not handle a gigantic
+    # nested if() expression reliably.
+    #
+    # Keep only 20 representative points.
     # --------------------------------------------------------
 
-    expression = str(
-        int(round(clean_points[-1][1]))
+    MAX_EXPRESSION_POINTS = 20
+
+    if len(clean_points) > MAX_EXPRESSION_POINTS:
+
+        reduced = []
+
+        last_index = len(clean_points) - 1
+
+        for i in range(MAX_EXPRESSION_POINTS):
+
+            position = (
+                i
+                / (MAX_EXPRESSION_POINTS - 1)
+            )
+
+            index = int(
+                round(
+                    position * last_index
+                )
+            )
+
+            reduced.append(
+                clean_points[index]
+            )
+
+        clean_points = reduced
+
+    # --------------------------------------------------------
+    # Remove duplicate timestamps.
+    # --------------------------------------------------------
+
+    unique_points = []
+
+    previous_timestamp = None
+
+    for timestamp, crop_x in clean_points:
+
+        if (
+            previous_timestamp is not None
+            and abs(
+                timestamp - previous_timestamp
+            ) < 0.0001
+        ):
+            continue
+
+        unique_points.append(
+            (
+                timestamp,
+                crop_x,
+            )
+        )
+
+        previous_timestamp = timestamp
+
+    clean_points = unique_points
+
+    if len(clean_points) == 1:
+        return str(
+            int(
+                round(
+                    clean_points[0][1]
+                )
+            )
+        )
+
+    # --------------------------------------------------------
+    # Build piecewise-linear expression.
+    #
+    # Example:
+    #
+    # if(
+    #   lt(t,1.0),
+    #   ...,
+    #   if(
+    #      lt(t,2.0),
+    #      ...,
+    #      ...
+    #   )
+    # )
+    # --------------------------------------------------------
+
+    expression = (
+        f"{clean_points[-1][1]:.2f}"
     )
 
-    for i in range(len(clean_points) - 2, -1, -1):
+    for i in range(
+        len(clean_points) - 2,
+        -1,
+        -1,
+    ):
 
         t0, x0 = clean_points[i]
         t1, x1 = clean_points[i + 1]
 
-        dt = max(0.001, t1 - t0)
+        dt = max(
+            0.001,
+            t1 - t0,
+        )
 
-        slope = (x1 - x0) / dt
+        slope = (
+            (x1 - x0)
+            / dt
+        )
 
         segment_expression = (
-            f"({x0:.4f}+"
-            f"({slope:.6f})*(t-{t0:.4f}))"
+            f"({x0:.2f}+"
+            f"({slope:.4f})*"
+            f"(t-{t0:.2f}))"
         )
 
         expression = (
-            f"if(lt(t,{t1:.4f}),"
+            f"if(lt(t,{t1:.2f}),"
             f"{segment_expression},"
             f"{expression})"
         )
@@ -507,190 +516,169 @@ def _build_crop_expression(points, crop_w, source_width):
 
 def _escape_filter_expression(expression):
     """
-    Escape commas inside an FFmpeg expression.
+    Escape commas inside FFmpeg expressions.
 
-    FFmpeg uses commas to separate filters in a filtergraph.
-
-    For example:
-
-        if(lt(t,1.25),100,200)
-
-    must become:
-
-        if(lt(t\,1.25)\,100\,200)
-
-    when embedded directly into a filtergraph.
-
-    This is the critical fix for:
-
-        No such filter: '0.2500)'
+    crop=...:if(...,...,...):...
+    needs commas escaped when passed as a filter string.
     """
 
-    return expression.replace(",", r"\,")
+    return expression.replace(
+        ",",
+        r"\,",
+    )
 
 
 # ============================================================
-# CREATE FACE CROP
+# Source dimensions
+# ============================================================
+
+def _get_video_dimensions(video_path):
+    """
+    Read source video dimensions with OpenCV.
+    """
+
+    cap = cv2.VideoCapture(
+        str(video_path)
+    )
+
+    if not cap.isOpened():
+        raise RuntimeError(
+            f"Could not open video: {video_path}"
+        )
+
+    width = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_WIDTH
+        )
+    )
+
+    height = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_HEIGHT
+        )
+    )
+
+    cap.release()
+
+    if width <= 0 or height <= 0:
+        raise RuntimeError(
+            f"Invalid video dimensions: "
+            f"{width}x{height}"
+        )
+
+    return width, height
+
+
+# ============================================================
+# Create face crop
 # ============================================================
 
 def _create_face_crop(
     video_path,
-    start_time,
-    end_time,
+    clip_start,
+    clip_duration,
 ):
     """
-    Create a dynamic 9:16 crop based on face position.
-
-    Source example:
-        1280x720
-
-    Crop:
-        405x720
-
-    Output:
-        1080x1920
+    Calculate the 9:16 crop and generate the dynamic
+    face-following X expression.
     """
 
-    probe_cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v:0",
-        "-show_entries",
-        "stream=width,height",
-        "-of",
-        "csv=p=0:s=x",
-        str(video_path),
-    ]
-
-    result = subprocess.run(
-        probe_cmd,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-    resolution_raw = result.stdout.strip()
-
-    print(
-        f"📐 FFprobe raw resolution: "
-        f"{resolution_raw!r}"
-    )
-
-    lines = [
-        line.strip()
-        for line in resolution_raw.splitlines()
-        if line.strip()
-    ]
-
-    source_width = None
-    source_height = None
-
-    # --------------------------------------------------------
-    # Case 1: a line contains WxH
-    # --------------------------------------------------------
-
-    for line in lines:
-
-        if "x" not in line.lower():
-            continue
-
-        parts = line.lower().split("x", 1)
-
-        try:
-
-            width = int(parts[0].strip())
-            height = int(parts[1].strip())
-
-            if width > 0 and height > 0:
-
-                source_width = width
-                source_height = height
-
-                break
-
-        except (ValueError, TypeError):
-            continue
-
-    # --------------------------------------------------------
-    # Case 2: separate numeric lines
-    # --------------------------------------------------------
-
-    if source_width is None or source_height is None:
-
-        numeric_values = []
-
-        for line in lines:
-
-            try:
-
-                value = int(line)
-
-                if value > 0:
-                    numeric_values.append(value)
-
-            except (ValueError, TypeError):
-                continue
-
-        if len(numeric_values) >= 2:
-
-            source_width = numeric_values[0]
-            source_height = numeric_values[1]
-
-    # --------------------------------------------------------
-    # Final validation
-    # --------------------------------------------------------
-
-    if (
-        source_width is None
-        or source_height is None
-        or source_width <= 0
-        or source_height <= 0
-    ):
-
-        raise RuntimeError(
-            "Could not determine source resolution from "
-            f"ffprobe output: {resolution_raw!r}"
-        )
-
-    print(
-        f"📐 Source resolution: "
-        f"{source_width}x{source_height}"
+    source_width, source_height = (
+        _get_video_dimensions(video_path)
     )
 
     # --------------------------------------------------------
     # 9:16 crop
     # --------------------------------------------------------
 
-    crop_h = source_height
-
-    crop_w = int(
-        round(crop_h * 9 / 16)
+    target_ratio = (
+        WIDTH / HEIGHT
     )
 
-    crop_w = min(
-        crop_w,
-        source_width,
+    source_ratio = (
+        source_width / source_height
+    )
+
+    if source_ratio > target_ratio:
+
+        # Landscape / wider source.
+        crop_h = source_height
+
+        crop_w = int(
+            round(
+                crop_h * target_ratio
+            )
+        )
+
+    else:
+
+        # Already portrait or close to portrait.
+        crop_w = source_width
+
+        crop_h = int(
+            round(
+                crop_w / target_ratio
+            )
+        )
+
+        if crop_h > source_height:
+            crop_h = source_height
+
+            crop_w = int(
+                round(
+                    crop_h * target_ratio
+                )
+            )
+
+    crop_w = max(
+        2,
+        min(
+            crop_w,
+            source_width,
+        ),
+    )
+
+    crop_h = max(
+        2,
+        min(
+            crop_h,
+            source_height,
+        ),
     )
 
     print(
-        f"📐 Crop area: "
+        f"📐 Source: "
+        f"{source_width}x{source_height}"
+    )
+
+    print(
+        f"📐 Crop: "
         f"{crop_w}x{crop_h}"
     )
 
     # --------------------------------------------------------
-    # Track face
+    # Track face.
     # --------------------------------------------------------
 
+    print(
+        "👤 Tracking face with MediaPipe..."
+    )
+
     tracking_points = _track_face(
-        video_path,
-        start_time,
-        end_time,
+        video_path=video_path,
+        clip_start=clip_start,
+        clip_duration=clip_duration,
+        source_width=source_width,
+        source_height=source_height,
+    )
+
+    print(
+        f"👤 Face tracking points: "
+        f"{len(tracking_points)}"
     )
 
     # --------------------------------------------------------
-    # No face
+    # If face wasn't detected, use center crop.
     # --------------------------------------------------------
 
     if not tracking_points:
@@ -699,136 +687,153 @@ def _create_face_crop(
             0,
             int(
                 round(
-                    (source_width - crop_w) / 2
+                    (source_width - crop_w)
+                    / 2
                 )
             ),
         )
 
         print(
-            f"↩️ Center crop X: {center_x}"
+            "⚠️ Face not detected. "
+            "Using center crop."
         )
 
-        return {
-            "crop_w": crop_w,
-            "crop_h": crop_h,
-            "x_expression": str(center_x),
-        }
+        return (
+            crop_w,
+            crop_h,
+            str(center_x),
+        )
 
     # --------------------------------------------------------
-    # Convert face centers to crop positions
+    # Convert face centers into crop positions.
     # --------------------------------------------------------
 
     crop_points = _smooth_tracking(
-        tracking_points,
-        crop_w,
-        source_width,
+        points=tracking_points,
+        crop_w=crop_w,
+        source_width=source_width,
     )
 
     # --------------------------------------------------------
-    # Build FFmpeg expression
+    # Build compact FFmpeg expression.
     # --------------------------------------------------------
 
     x_expression = _build_crop_expression(
-        crop_points,
+        points=crop_points,
+        crop_w=crop_w,
+        source_width=source_width,
+    )
+
+    print(
+        f"🎯 Crop X expression: "
+        f"{x_expression}"
+    )
+
+    return (
         crop_w,
-        source_width,
+        crop_h,
+        x_expression,
     )
-
-    print(
-        "🎯 Dynamic face crop enabled."
-    )
-
-    print(
-        f"🎯 Tracking points: "
-        f"{len(crop_points)}"
-    )
-
-    return {
-        "crop_w": crop_w,
-        "crop_h": crop_h,
-        "x_expression": x_expression,
-    }
 
 
 # ============================================================
-# RENDER ONE CLIP
+# Render single clip
 # ============================================================
 
 def render_clip(
-    source_video,
+    source_path,
     output_path,
     start_time,
     end_time,
 ):
     """
-    Render one vertical Shorts clip.
+    Render one vertical 1080x1920 Short.
 
-    Preserves:
-        1080x1920
-        H.264
-        CRF 20
-        AAC 192k
-        original audio
-        faststart
+    Uses:
+        - MediaPipe face tracking
+        - dynamic horizontal crop
+        - 9:16 framing
+        - Lanczos scaling
+        - H.264
+        - AAC
     """
 
-    source_video = Path(source_video)
-    output_path = Path(output_path)
+    source_path = Path(
+        source_path
+    )
+
+    output_path = Path(
+        output_path
+    )
 
     output_path.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
 
+    start_time = float(
+        start_time
+    )
+
+    end_time = float(
+        end_time
+    )
+
+    duration = (
+        end_time
+        - start_time
+    )
+
+    if duration <= 0:
+        raise ValueError(
+            f"Invalid clip duration: "
+            f"{start_time} -> {end_time}"
+        )
+
     print()
-    print("=" * 60)
-    print("🎬 Rendering clip")
     print(
-        f"⏱️ Start: {start_time:.2f}s"
+        "🎬 Rendering clip"
     )
+
     print(
-        f"⏱️ End:   {end_time:.2f}s"
-    )
-    print("=" * 60)
-
-    # --------------------------------------------------------
-    # Create dynamic face crop
-    # --------------------------------------------------------
-
-    crop = _create_face_crop(
-        source_video,
-        start_time,
-        end_time,
+        f"   Start: {start_time:.2f}s"
     )
 
-    crop_w = crop["crop_w"]
-    crop_h = crop["crop_h"]
-    x_expression = crop["x_expression"]
+    print(
+        f"   End:   {end_time:.2f}s"
+    )
+
+    print(
+        f"   Duration: {duration:.2f}s"
+    )
 
     # --------------------------------------------------------
-    # CRITICAL:
-    #
-    # Escape commas inside dynamic FFmpeg expressions.
-    #
-    # Example:
-    #
-    # if(lt(t,1.25),100,200)
-    #
-    # becomes:
-    #
-    # if(lt(t\,1.25)\,100\,200)
+    # Create dynamic face-following crop.
     # --------------------------------------------------------
 
-    escaped_x_expression = _escape_filter_expression(
-        x_expression
+    crop_w, crop_h, x_expression = (
+        _create_face_crop(
+            video_path=source_path,
+            clip_start=start_time,
+            clip_duration=duration,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Escape commas for FFmpeg filter parser.
+    # --------------------------------------------------------
+
+    escaped_x_expression = (
+        _escape_filter_expression(
+            x_expression
+        )
     )
 
     crop_filter = (
         f"crop="
         f"{crop_w}:"
         f"{crop_h}:"
-        f"{escaped_x_expression}:"
-        f"0,"
+        f"{escaped_x_expression}:0,"
         f"scale="
         f"{WIDTH}:"
         f"{HEIGHT}:"
@@ -836,11 +841,17 @@ def render_clip(
     )
 
     print(
-        f"🎯 Crop filter: {crop_filter[:1000]}"
-        + ("..." if len(crop_filter) > 1000 else "")
+        f"🎯 Crop filter: "
+        f"{crop_filter}"
     )
 
-    cmd = [
+    # --------------------------------------------------------
+    # FFmpeg command.
+    #
+    # Keep -ss before -i for fast seeking.
+    # --------------------------------------------------------
+
+    command = [
         "ffmpeg",
         "-y",
 
@@ -848,10 +859,10 @@ def render_clip(
         str(start_time),
 
         "-i",
-        str(source_video),
+        str(source_path),
 
         "-t",
-        str(end_time - start_time),
+        str(duration),
 
         "-vf",
         crop_filter,
@@ -880,157 +891,190 @@ def render_clip(
         str(output_path),
     ]
 
-    print("🎥 Running FFmpeg...")
+    print()
+    print(
+        "🚀 Running FFmpeg..."
+    )
 
-    process = subprocess.run(
-        cmd,
+    result = subprocess.run(
+        command,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         text=True,
     )
 
-    if process.returncode != 0:
+    if result.returncode != 0:
 
+        print()
         print(
-            "❌ FFmpeg render failed:"
+            "❌ FFmpeg failed:"
         )
 
         print(
-            process.stdout[-8000:]
+            result.stderr
         )
 
         raise RuntimeError(
             "FFmpeg render failed"
         )
 
-    if not output_path.exists():
-
+    if (
+        not output_path.exists()
+        or output_path.stat().st_size <= 0
+    ):
         raise RuntimeError(
-            f"Output file was not created: "
+            f"FFmpeg completed but output "
+            f"file is missing or empty: "
             f"{output_path}"
         )
 
-    size_mb = (
-        output_path.stat().st_size
-        / 1024
-        / 1024
-    )
-
+    print()
     print(
-        f"✅ Clip rendered: "
+        f"✅ Rendered: "
         f"{output_path}"
     )
 
     print(
-        f"📦 Size: {size_mb:.2f} MB"
+        f"📦 Size: "
+        f"{output_path.stat().st_size / 1024 / 1024:.2f} MB"
     )
 
     return output_path
 
 
 # ============================================================
-# RENDER ALL CLIPS
+# Render multiple clips
 # ============================================================
 
 def render_clips(
-    source_video,
+    source_path,
     clips,
     output_dir,
 ):
     """
-    Render all selected clips.
+    Render multiple clips.
 
-    Expected clips format:
-
-        [
-            {
-                "start": 100.0,
-                "end": 150.0,
-            },
-            ...
-        ]
-
-    Also supports:
+    Supports clip dictionaries in both forms:
 
         {
-            "start_time": ...,
-            "end_time": ...
+            "start": 10,
+            "end": 40
+        }
+
+    and:
+
+        {
+            "start_time": 10,
+            "end_time": 40
         }
     """
 
-    source_video = Path(source_video)
-    output_dir = Path(output_dir)
+    source_path = Path(
+        source_path
+    )
+
+    output_dir = Path(
+        output_dir
+    )
 
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    rendered = []
+    rendered_files = []
+
+    if not clips:
+        print(
+            "⚠️ No clips to render."
+        )
+
+        return rendered_files
+
+    print()
+    print(
+        f"🎞️ Clips to render: "
+        f"{len(clips)}"
+    )
 
     for index, clip in enumerate(
         clips,
         start=1,
     ):
 
-        # ----------------------------------------------------
-        # Support both naming formats
-        # ----------------------------------------------------
-
-        start_time = clip.get(
-            "start",
-            clip.get("start_time"),
-        )
-
-        end_time = clip.get(
-            "end",
-            clip.get("end_time"),
-        )
-
-        if start_time is None or end_time is None:
-
-            print(
-                f"⚠️ Invalid clip #{index}: "
-                f"{clip}"
+        if "start" in clip:
+            start_time = float(
+                clip["start"]
             )
 
-            continue
-
-        start_time = float(start_time)
-        end_time = float(end_time)
-
-        if end_time <= start_time:
-
-            print(
-                f"⚠️ Invalid clip duration "
-                f"#{index}: "
-                f"{start_time} -> {end_time}"
+        elif "start_time" in clip:
+            start_time = float(
+                clip["start_time"]
             )
 
-            continue
+        else:
+            raise ValueError(
+                f"Clip {index} has no "
+                f"'start' or 'start_time'"
+            )
+
+        if "end" in clip:
+            end_time = float(
+                clip["end"]
+            )
+
+        elif "end_time" in clip:
+            end_time = float(
+                clip["end_time"]
+            )
+
+        else:
+            raise ValueError(
+                f"Clip {index} has no "
+                f"'end' or 'end_time'"
+            )
 
         output_path = (
             output_dir
             / f"clip_{index:02d}.mp4"
         )
 
-        rendered_path = render_clip(
-            source_video=source_video,
+        print()
+        print(
+            "========================================"
+        )
+
+        print(
+            f"🎬 Clip {index}/{len(clips)}"
+        )
+
+        print(
+            "========================================"
+        )
+
+        rendered = render_clip(
+            source_path=source_path,
             output_path=output_path,
             start_time=start_time,
             end_time=end_time,
         )
 
-        rendered.append(
-            rendered_path
+        rendered_files.append(
+            rendered
         )
 
     print()
-    print("=" * 60)
     print(
-        f"✅ Rendered clips: "
-        f"{len(rendered)}"
+        "========================================"
     )
-    print("=" * 60)
 
-    return rendered
+    print(
+        f"✅ Rendered "
+        f"{len(rendered_files)} clips"
+    )
+
+    print(
+        "========================================"
+    )
+
+    return rendered_files
