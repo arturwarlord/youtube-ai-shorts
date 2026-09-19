@@ -446,14 +446,9 @@ def _build_crop_expression(points, crop_w, source_width):
     """
 
     if not points:
-
         center_x = max(
             0,
-            int(
-                round(
-                    (source_width - crop_w) / 2
-                )
-            ),
+            int(round((source_width - crop_w) / 2)),
         )
 
         return str(center_x)
@@ -484,13 +479,7 @@ def _build_crop_expression(points, crop_w, source_width):
         )
 
     if len(clean_points) == 1:
-        return str(
-            int(
-                round(
-                    clean_points[0][1]
-                )
-            )
-        )
+        return str(int(round(clean_points[0][1])))
 
     # --------------------------------------------------------
     # Build piecewise linear expression.
@@ -500,11 +489,7 @@ def _build_crop_expression(points, crop_w, source_width):
     # --------------------------------------------------------
 
     expression = str(
-        int(
-            round(
-                clean_points[-1][1]
-            )
-        )
+        int(round(clean_points[-1][1]))
     )
 
     for i in range(len(clean_points) - 2, -1, -1):
@@ -512,10 +497,7 @@ def _build_crop_expression(points, crop_w, source_width):
         t0, x0 = clean_points[i]
         t1, x1 = clean_points[i + 1]
 
-        dt = max(
-            0.001,
-            t1 - t0,
-        )
+        dt = max(0.001, t1 - t0)
 
         slope = (x1 - x0) / dt
 
@@ -555,10 +537,6 @@ def _create_face_crop(
         1080x1920
     """
 
-    # --------------------------------------------------------
-    # Get source resolution with ffprobe
-    # --------------------------------------------------------
-
     probe_cmd = [
         "ffprobe",
         "-v",
@@ -579,63 +557,88 @@ def _create_face_crop(
         check=True,
     )
 
-    resolution = result.stdout.strip()
+    resolution_raw = result.stdout.strip()
+
+    print(f"📐 FFprobe raw resolution: {resolution_raw!r}")
+
+    # FFprobe can return different formats depending on the
+    # installed FFmpeg build. Examples:
+    #
+    #   1280x720
+    #
+    # or:
+    #
+    #   1280
+    #   720
+    #
+    # Some runners may even return a mixed value such as:
+    #   720\n\n1280x720
+    #
+    # Parse the WxH value first, then fall back to separate
+    # numeric lines.
+
+    lines = [
+        line.strip()
+        for line in resolution_raw.splitlines()
+        if line.strip()
+    ]
+
+    source_width = None
+    source_height = None
 
     # --------------------------------------------------------
-    # FIX:
-    #
-    # ffprobe can return:
-    #
-    # 1280x720
-    #
-    # OR:
-    #
-    # 1280
-    # 720
-    #
-    # We support both formats.
+    # Case 1: a line contains WxH
     # --------------------------------------------------------
 
-    if "x" in resolution:
+    for line in lines:
+        if "x" not in line.lower():
+            continue
 
-        values = resolution.split("x", 1)
+        parts = line.lower().split("x", 1)
 
-        if len(values) != 2:
-            raise RuntimeError(
-                f"Could not parse video resolution: "
-                f"{resolution!r}"
-            )
+        try:
+            width = int(parts[0].strip())
+            height = int(parts[1].strip())
 
-        source_width = int(
-            values[0].strip()
-        )
+            if width > 0 and height > 0:
+                source_width = width
+                source_height = height
+                break
+        except (ValueError, TypeError):
+            continue
 
-        source_height = int(
-            values[1].strip()
-        )
+    # --------------------------------------------------------
+    # Case 2: separate numeric lines
+    # --------------------------------------------------------
 
-    else:
+    if source_width is None or source_height is None:
+        numeric_values = []
 
-        values = resolution.split()
+        for line in lines:
+            try:
+                value = int(line)
+                if value > 0:
+                    numeric_values.append(value)
+            except (ValueError, TypeError):
+                continue
 
-        if len(values) < 2:
-            raise RuntimeError(
-                f"Could not parse video resolution "
-                f"from ffprobe: {resolution!r}"
-            )
+        if len(numeric_values) >= 2:
+            source_width = numeric_values[0]
+            source_height = numeric_values[1]
 
-        source_width = int(
-            values[0]
-        )
+    # --------------------------------------------------------
+    # Final validation
+    # --------------------------------------------------------
 
-        source_height = int(
-            values[1]
-        )
-
-    if source_width <= 0 or source_height <= 0:
+    if (
+        source_width is None
+        or source_height is None
+        or source_width <= 0
+        or source_height <= 0
+    ):
         raise RuntimeError(
-            f"Invalid source resolution: "
-            f"{source_width}x{source_height}"
+            "Could not determine source resolution from "
+            f"ffprobe output: {resolution_raw!r}"
         )
 
     print(
@@ -650,9 +653,7 @@ def _create_face_crop(
     crop_h = source_height
 
     crop_w = int(
-        round(
-            crop_h * 9 / 16
-        )
+        round(crop_h * 9 / 16)
     )
 
     # Safety
@@ -759,13 +760,8 @@ def render_clip(
         faststart
     """
 
-    source_video = Path(
-        source_video
-    )
-
-    output_path = Path(
-        output_path
-    )
+    source_video = Path(source_video)
+    output_path = Path(output_path)
 
     output_path.parent.mkdir(
         parents=True,
@@ -880,7 +876,6 @@ def render_clip(
         )
 
     if not output_path.exists():
-
         raise RuntimeError(
             f"Output file was not created: "
             f"{output_path}"
@@ -934,13 +929,8 @@ def render_clips(
         }
     """
 
-    source_video = Path(
-        source_video
-    )
-
-    output_dir = Path(
-        output_dir
-    )
+    source_video = Path(source_video)
+    output_dir = Path(output_dir)
 
     output_dir.mkdir(
         parents=True,
@@ -969,30 +959,21 @@ def render_clips(
         )
 
         if start_time is None or end_time is None:
-
             print(
                 f"⚠️ Invalid clip #{index}: "
                 f"{clip}"
             )
-
             continue
 
-        start_time = float(
-            start_time
-        )
-
-        end_time = float(
-            end_time
-        )
+        start_time = float(start_time)
+        end_time = float(end_time)
 
         if end_time <= start_time:
-
             print(
                 f"⚠️ Invalid clip duration "
                 f"#{index}: "
                 f"{start_time} -> {end_time}"
             )
-
             continue
 
         output_path = (
