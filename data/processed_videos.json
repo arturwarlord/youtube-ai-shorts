@@ -1,5 +1,24 @@
 {
   "videos": {
+    "48866ea67c8278f327efa78f80d57168": {
+      "clips": [
+        {
+          "end": 1248.16,
+          "start": 1216.06,
+          "youtube_video_id": "KBqyswHtyWU"
+        },
+        {
+          "end": 2173.94,
+          "start": 2152.82,
+          "youtube_video_id": "rEYFMXSXGvs"
+        }
+      ],
+      "id": "48866ea67c8278f327efa78f80d57168",
+      "processed_at": "2026-09-19T17:56:30.880540+00:00",
+      "title": "Астрофизик Ави Леб: Мы уже нашли инопланетян?",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/48866ea67c8278f327efa78f80d57168/"
+    },
     "5904989336a1002f49b3937eb54e8bb2": {
       "clips": [
         {
