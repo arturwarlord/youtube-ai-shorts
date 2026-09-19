@@ -427,22 +427,15 @@ def _build_crop_expression(points, crop_w, source_width):
     """
     Build an FFmpeg expression for dynamic X crop.
 
+    IMPORTANT:
+    The returned expression contains normal FFmpeg commas.
+    They are escaped later by _escape_filter_expression()
+    before being inserted into the crop filter.
+
     Example:
 
-        crop=405:720:
-        if(
-            lt(t,1.0),
-            100,
-            if(
-                lt(t,1.25),
-                120,
-                ...
-            )
-        ):
-        0
+        if(lt(t,1.25),(100+(20.000000)*(t-1.0000)),120)
 
-    The expression interpolates between tracking points
-    instead of jumping from one point to another.
     """
 
     if not points:
@@ -483,9 +476,6 @@ def _build_crop_expression(points, crop_w, source_width):
 
     # --------------------------------------------------------
     # Build piecewise linear expression.
-    #
-    # We build it backwards because FFmpeg expressions are
-    # easier to generate this way.
     # --------------------------------------------------------
 
     expression = str(
@@ -513,6 +503,30 @@ def _build_crop_expression(points, crop_w, source_width):
         )
 
     return expression
+
+
+def _escape_filter_expression(expression):
+    """
+    Escape commas inside an FFmpeg expression.
+
+    FFmpeg uses commas to separate filters in a filtergraph.
+
+    For example:
+
+        if(lt(t,1.25),100,200)
+
+    must become:
+
+        if(lt(t\,1.25)\,100\,200)
+
+    when embedded directly into a filtergraph.
+
+    This is the critical fix for:
+
+        No such filter: '0.2500)'
+    """
+
+    return expression.replace(",", r"\,")
 
 
 # ============================================================
@@ -559,23 +573,10 @@ def _create_face_crop(
 
     resolution_raw = result.stdout.strip()
 
-    print(f"📐 FFprobe raw resolution: {resolution_raw!r}")
-
-    # FFprobe can return different formats depending on the
-    # installed FFmpeg build. Examples:
-    #
-    #   1280x720
-    #
-    # or:
-    #
-    #   1280
-    #   720
-    #
-    # Some runners may even return a mixed value such as:
-    #   720\n\n1280x720
-    #
-    # Parse the WxH value first, then fall back to separate
-    # numeric lines.
+    print(
+        f"📐 FFprobe raw resolution: "
+        f"{resolution_raw!r}"
+    )
 
     lines = [
         line.strip()
@@ -591,19 +592,24 @@ def _create_face_crop(
     # --------------------------------------------------------
 
     for line in lines:
+
         if "x" not in line.lower():
             continue
 
         parts = line.lower().split("x", 1)
 
         try:
+
             width = int(parts[0].strip())
             height = int(parts[1].strip())
 
             if width > 0 and height > 0:
+
                 source_width = width
                 source_height = height
+
                 break
+
         except (ValueError, TypeError):
             continue
 
@@ -612,17 +618,23 @@ def _create_face_crop(
     # --------------------------------------------------------
 
     if source_width is None or source_height is None:
+
         numeric_values = []
 
         for line in lines:
+
             try:
+
                 value = int(line)
+
                 if value > 0:
                     numeric_values.append(value)
+
             except (ValueError, TypeError):
                 continue
 
         if len(numeric_values) >= 2:
+
             source_width = numeric_values[0]
             source_height = numeric_values[1]
 
@@ -636,6 +648,7 @@ def _create_face_crop(
         or source_width <= 0
         or source_height <= 0
     ):
+
         raise RuntimeError(
             "Could not determine source resolution from "
             f"ffprobe output: {resolution_raw!r}"
@@ -656,7 +669,6 @@ def _create_face_crop(
         round(crop_h * 9 / 16)
     )
 
-    # Safety
     crop_w = min(
         crop_w,
         source_width,
@@ -794,22 +806,38 @@ def render_clip(
     x_expression = crop["x_expression"]
 
     # --------------------------------------------------------
-    # IMPORTANT:
+    # CRITICAL:
     #
-    # Do not quote the whole crop expression as one argument.
-    # FFmpeg receives it as part of the filter string.
+    # Escape commas inside dynamic FFmpeg expressions.
+    #
+    # Example:
+    #
+    # if(lt(t,1.25),100,200)
+    #
+    # becomes:
+    #
+    # if(lt(t\,1.25)\,100\,200)
     # --------------------------------------------------------
+
+    escaped_x_expression = _escape_filter_expression(
+        x_expression
+    )
 
     crop_filter = (
         f"crop="
         f"{crop_w}:"
         f"{crop_h}:"
-        f"{x_expression}:"
+        f"{escaped_x_expression}:"
         f"0,"
         f"scale="
         f"{WIDTH}:"
         f"{HEIGHT}:"
         f"flags=lanczos"
+    )
+
+    print(
+        f"🎯 Crop filter: {crop_filter[:1000]}"
+        + ("..." if len(crop_filter) > 1000 else "")
     )
 
     cmd = [
@@ -876,6 +904,7 @@ def render_clip(
         )
 
     if not output_path.exists():
+
         raise RuntimeError(
             f"Output file was not created: "
             f"{output_path}"
@@ -959,21 +988,25 @@ def render_clips(
         )
 
         if start_time is None or end_time is None:
+
             print(
                 f"⚠️ Invalid clip #{index}: "
                 f"{clip}"
             )
+
             continue
 
         start_time = float(start_time)
         end_time = float(end_time)
 
         if end_time <= start_time:
+
             print(
                 f"⚠️ Invalid clip duration "
                 f"#{index}: "
                 f"{start_time} -> {end_time}"
             )
+
             continue
 
         output_path = (
