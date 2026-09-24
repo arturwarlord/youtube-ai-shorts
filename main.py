@@ -39,7 +39,10 @@ CLIPS_DIR = Path("output/clips")
 
 RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
 
-RUTUBE_MAX_VIDEOS = 50
+# Сканируем больше записей канала, потому что последние 50 видео
+# могут быть в основном короткими Shorts. extract_flat не скачивает
+# сами видео — только метаданные, поэтому увеличение лимита безопасно.
+RUTUBE_MAX_VIDEOS = 300
 
 MIN_SOURCE_DURATION = 20 * 60
 
