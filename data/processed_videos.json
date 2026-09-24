@@ -1,5 +1,24 @@
 {
   "videos": {
+    "39b3f0ef5d125ee97767cf72ba830de3": {
+      "clips": [
+        {
+          "end": 1309.04,
+          "start": 1276.04,
+          "youtube_video_id": "9AMSL7NlbPs"
+        },
+        {
+          "end": 534.4,
+          "start": 507.62,
+          "youtube_video_id": "yX9dSbWfBuc"
+        }
+      ],
+      "id": "39b3f0ef5d125ee97767cf72ba830de3",
+      "processed_at": "2026-09-24T08:34:22.097965+00:00",
+      "title": "«Вы даже не представляете масштаб катастрофы» — Роман Ямпольский о сверхинтеллекте",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/39b3f0ef5d125ee97767cf72ba830de3/"
+    },
     "48866ea67c8278f327efa78f80d57168": {
       "clips": [
         {
