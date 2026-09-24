@@ -42,7 +42,7 @@ RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
 # Сканируем больше записей канала, потому что последние 50 видео
 # могут быть в основном короткими Shorts. extract_flat не скачивает
 # сами видео — только метаданные, поэтому увеличение лимита безопасно.
-RUTUBE_MAX_VIDEOS = 300
+RUTUBE_MAX_VIDEOS = None
 
 MIN_SOURCE_DURATION = 20 * 60
 
@@ -665,7 +665,6 @@ def get_rutube_videos():
         "no_warnings": False,
         "extract_flat": True,
         "skip_download": True,
-        "playlistend": RUTUBE_MAX_VIDEOS,
     }
 
     try:
