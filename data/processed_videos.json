@@ -46,10 +46,17 @@
           "published_at": "2026-10-02T15:56:51.545743+00:00",
           "start": 40.1,
           "youtube_video_id": "hpAXVjLp_ks"
+        },
+        {
+          "duration": 20.0,
+          "end": 95.88,
+          "published_at": "2026-10-02T15:57:15.604990+00:00",
+          "start": 75.88,
+          "youtube_video_id": "lSiZO5-meQQ"
         }
       ],
       "id": "53e77aa890e96fa6f755adb0cccbffb8",
-      "last_processed_at": "2026-10-02T15:56:51.545758+00:00",
+      "last_processed_at": "2026-10-02T15:57:15.605004+00:00",
       "title": "Андрей Смаев: Реальная история русского богатыря / 150 кг",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/53e77aa890e96fa6f755adb0cccbffb8/"
