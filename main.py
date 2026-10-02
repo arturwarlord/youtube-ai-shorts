@@ -39,15 +39,16 @@ CLIPS_DIR = Path("output/clips")
 
 RUTUBE_CHANNEL_URL = "https://rutube.ru/channel/23968031/"
 
-# Сканируем больше записей канала, потому что последние 50 видео
-# могут быть в основном короткими Shorts. extract_flat не скачивает
-# сами видео — только метаданные, поэтому увеличение лимита безопасно.
+# None = весь канал.
+# extract_flat получает только метаданные,
+# поэтому сами видео здесь НЕ скачиваются.
 RUTUBE_MAX_VIDEOS = None
 
+# Минимальная длина исходного видео.
+# Всё, что короче, не скачиваем.
 MIN_SOURCE_DURATION = 20 * 60
 
-# 2 Shorts за один запуск.
-# Workflow запускается 3 раза в день = 6 Shorts / день.
+# Сколько Shorts публикуем за один запуск.
 MAX_CLIPS = 2
 
 MAX_VIDEO_HEIGHT = 720
@@ -56,71 +57,134 @@ DOWNLOAD_TIMEOUT = 25 * 60
 
 RETRY_DELAY = 3
 
+
+# ============================================================
+# CLIP CONFIG
+# ============================================================
+
+# Gemini иногда возвращает, например:
+#
+# 40.1 -> 53.3 = 13.2 сек
+#
+# Для Shorts нам нужен минимум 20 секунд.
+#
+# Если Gemini дал короткий отрезок, main.py расширяет его
+# вокруг исходного момента.
+MIN_CLIP_DURATION = 20.0
+MAX_CLIP_DURATION = 60.0
+
+# Если новый кандидат пересекается с уже опубликованным
+# участком более чем на этот процент, считаем его дублем.
+#
+# Например:
+#
+# Published: 100 -> 140
+# New:       110 -> 145
+#
+# Пересечение = 30 сек.
+# Новый ролик длиной 35 сек.
+# 30 / 35 = 85.7%
+#
+# => дубль.
+DUPLICATE_OVERLAP_RATIO = 0.50
+
+# Если Gemini снова предлагает уже опубликованные фрагменты,
+# делаем несколько новых попыток выбора.
+#
+# Это позволяет искать новые моменты в старом видео.
+MAX_CLIP_SELECTION_ATTEMPTS = 3
+
+
 # ============================================================
 # GEMINI RETRY
 # ============================================================
 
-# Максимальное количество повторных попыток Gemini
-# при ошибке 429 RESOURCE_EXHAUSTED.
 GEMINI_MAX_RETRIES = 10
 
-# Небольшой запас к времени, которое сообщает Gemini.
-# Например:
-# Please retry in 33.5s
-# реально ждём 35.0s.
 GEMINI_RETRY_BUFFER = 1.5
 
-# Если Gemini вернул 429, но время ожидания
-# в тексте ошибки определить не удалось.
 GEMINI_DEFAULT_RETRY_DELAY = 60
+
 
 # ============================================================
 # PROCESSING HISTORY
 # ============================================================
 
-# This file is intentionally stored in the repository so GitHub
-# Actions runs remember which RUTUBE source videos were already
-# processed and published.
+# ВАЖНО:
+#
+# Здесь теперь хранится НЕ просто:
+#
+# video_id -> processed
+#
+# а:
+#
+# video_id -> все уже опубликованные клипы этого видео.
+#
+# Поэтому один RUTUBE-ролик можно обрабатывать
+# много раз и искать в нём новые моменты.
 HISTORY_FILE = Path("data/processed_videos.json")
+
 SOURCE_INFO_FILE = Path("input/source.json")
 
-# Filled during --download and recovered during --process.
 SELECTED_SOURCE_VIDEO_INFO = {}
 
 
+# ============================================================
+# HISTORY
+# ============================================================
+
 def load_processing_history():
-    """Load persistent RUTUBE processing history."""
+    """
+    Загружает постоянную историю опубликованных клипов.
+    """
 
     if not HISTORY_FILE.exists():
         return {"videos": {}}
 
     try:
         data = json.loads(
-            HISTORY_FILE.read_text(encoding="utf-8")
+            HISTORY_FILE.read_text(
+                encoding="utf-8"
+            )
         )
+
     except Exception as error:
+
         print(
             f"⚠️ Could not read {HISTORY_FILE}: {error}"
         )
-        return {"videos": {}}
+
+        return {
+            "videos": {}
+        }
 
     if not isinstance(data, dict):
-        return {"videos": {}}
+        return {
+            "videos": {}
+        }
 
-    videos = data.get("videos")
-
-    if not isinstance(videos, dict):
+    if not isinstance(
+        data.get("videos"),
+        dict,
+    ):
         data["videos"] = {}
 
     return data
 
 
 def save_processing_history(history):
-    """Atomically save processing history."""
+    """
+    Безопасно сохраняет историю через временный файл.
+    """
 
-    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    HISTORY_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    temp_file = HISTORY_FILE.with_suffix(".tmp")
+    temp_file = HISTORY_FILE.with_suffix(
+        ".tmp"
+    )
 
     temp_file.write_text(
         json.dumps(
@@ -132,101 +196,360 @@ def save_processing_history(history):
         encoding="utf-8",
     )
 
-    temp_file.replace(HISTORY_FILE)
-
-
-def save_source_info(video):
-    """Persist the selected source between --download and --process."""
-
-    SOURCE_INFO_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-    SOURCE_INFO_FILE.write_text(
-        json.dumps(video, ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
+    temp_file.replace(
+        HISTORY_FILE
     )
 
 
-def load_source_info():
-    """Recover selected source metadata for a separate --process run."""
+def get_video_history(video_id):
+    """
+    Возвращает историю конкретного RUTUBE-видео.
+    """
 
-    if not SOURCE_INFO_FILE.exists():
-        return {}
-
-    try:
-        data = json.loads(
-            SOURCE_INFO_FILE.read_text(encoding="utf-8")
-        )
-    except Exception as error:
-        print(
-            f"⚠️ Could not read {SOURCE_INFO_FILE}: {error}"
-        )
-        return {}
-
-    return data if isinstance(data, dict) else {}
-
-
-def mark_video_processed(video, clips, uploaded_videos):
-    """Record a source only after all selected Shorts were uploaded."""
-
-    video_id = str(video.get("id") or "").strip()
+    video_id = str(
+        video_id or ""
+    ).strip()
 
     if not video_id:
-        print("⚠️ Cannot persist history: source video ID is missing.")
+        return {}
+
+    history = load_processing_history()
+
+    videos = history.get(
+        "videos",
+        {},
+    )
+
+    item = videos.get(
+        video_id
+    )
+
+    if not isinstance(
+        item,
+        dict,
+    ):
+        return {}
+
+    return item
+
+
+def get_published_clips(video_id):
+    """
+    Возвращает список уже опубликованных клипов
+    конкретного исходного видео.
+    """
+
+    item = get_video_history(
+        video_id
+    )
+
+    clips = item.get(
+        "clips",
+        [],
+    )
+
+    if not isinstance(
+        clips,
+        list,
+    ):
+        return []
+
+    result = []
+
+    for clip in clips:
+
+        if not isinstance(
+            clip,
+            dict,
+        ):
+            continue
+
+        try:
+
+            start = float(
+                clip["start"]
+            )
+
+            end = float(
+                clip["end"]
+            )
+
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        if end <= start:
+            continue
+
+        result.append(
+            {
+                **clip,
+                "start": start,
+                "end": end,
+            }
+        )
+
+    return result
+
+
+def record_published_clip(
+    video,
+    clip,
+    youtube_video_id,
+):
+    """
+    Добавляет ОДИН успешно опубликованный Shorts
+    в постоянную историю.
+
+    ВАЖНО:
+    существующие клипы НЕ удаляются.
+    """
+
+    video_id = str(
+        video.get("id") or ""
+    ).strip()
+
+    if not video_id:
+        print(
+            "⚠️ Cannot save published clip: "
+            "source video ID is missing."
+        )
+
+        return False
+
+    try:
+
+        start = float(
+            clip["start"]
+        )
+
+        end = float(
+            clip["end"]
+        )
+
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ):
+
+        print(
+            "⚠️ Cannot save published clip: "
+            "invalid clip timestamps."
+        )
+
         return False
 
     history = load_processing_history()
 
-    clip_records = []
+    videos = history.setdefault(
+        "videos",
+        {},
+    )
 
-    for index, clip in enumerate(clips):
-        youtube_id = (
-            uploaded_videos[index]
-            if index < len(uploaded_videos)
-            else None
+    video_history = videos.get(
+        video_id
+    )
+
+    if not isinstance(
+        video_history,
+        dict,
+    ):
+        video_history = {
+            "id": video_id,
+            "title": video.get("title") or "",
+            "webpage_url": video.get("webpage_url") or "",
+            "upload_date": video.get("upload_date") or "",
+            "clips": [],
+        }
+
+    clips = video_history.get(
+        "clips"
+    )
+
+    if not isinstance(
+        clips,
+        list,
+    ):
+        clips = []
+
+    # --------------------------------------------------------
+    # Защита от повторной записи одного и того же клипа
+    # --------------------------------------------------------
+
+    for existing in clips:
+
+        if not isinstance(
+            existing,
+            dict,
+        ):
+            continue
+
+        try:
+
+            existing_start = float(
+                existing["start"]
+            )
+
+            existing_end = float(
+                existing["end"]
+            )
+
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        overlap = calculate_overlap_ratio(
+            start,
+            end,
+            existing_start,
+            existing_end,
         )
 
-        clip_records.append({
-            "start": float(clip["start"]),
-            "end": float(clip["end"]),
-            "youtube_video_id": youtube_id,
-        })
+        if overlap >= DUPLICATE_OVERLAP_RATIO:
 
-    history["videos"][video_id] = {
-        "id": video_id,
-        "title": video.get("title") or "",
-        "webpage_url": video.get("webpage_url") or "",
-        "upload_date": video.get("upload_date") or "",
-        "processed_at": datetime.now(timezone.utc).isoformat(),
-        "clips": clip_records,
+            print()
+            print(
+                "⚠️ Clip already exists in history."
+            )
+
+            print(
+                f"   Existing: "
+                f"{existing_start:.2f} → "
+                f"{existing_end:.2f}"
+            )
+
+            print(
+                f"   New:      "
+                f"{start:.2f} → "
+                f"{end:.2f}"
+            )
+
+            return True
+
+    clip_record = {
+        "start": round(
+            start,
+            3,
+        ),
+        "end": round(
+            end,
+            3,
+        ),
+        "duration": round(
+            end - start,
+            3,
+        ),
+        "youtube_video_id": (
+            str(
+                youtube_video_id
+            ).strip()
+            if youtube_video_id
+            else None
+        ),
+        "published_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
     }
 
-    save_processing_history(history)
+    clips.append(
+        clip_record
+    )
+
+    video_history["id"] = video_id
+
+    video_history["title"] = (
+        video.get("title")
+        or video_history.get("title")
+        or ""
+    )
+
+    video_history["webpage_url"] = (
+        video.get("webpage_url")
+        or video_history.get("webpage_url")
+        or ""
+    )
+
+    video_history["upload_date"] = (
+        video.get("upload_date")
+        or video_history.get("upload_date")
+        or ""
+    )
+
+    video_history["last_processed_at"] = (
+        datetime.now(
+            timezone.utc
+        ).isoformat()
+    )
+
+    video_history["clips"] = clips
+
+    videos[video_id] = video_history
+
+    save_processing_history(
+        history
+    )
 
     print()
-    print("💾 Processing history updated")
-    print(f"   Source ID: {video_id}")
-    print(f"   History:   {HISTORY_FILE}")
+    print(
+        "💾 Published clip saved to history"
+    )
+
+    print(
+        f"   Source ID: {video_id}"
+    )
+
+    print(
+        f"   Clip:      {start:.2f} → {end:.2f}"
+    )
+
+    if youtube_video_id:
+        print(
+            f"   YouTube:   {youtube_video_id}"
+        )
+
+    print(
+        f"   History:   {HISTORY_FILE}"
+    )
 
     return True
 
 
 def persist_history_to_git():
-    """Commit/push processing history when running inside GitHub Actions."""
+    """
+    Commit/push history в GitHub Actions.
 
-    if not os.environ.get("GITHUB_ACTIONS"):
-        print("ℹ️ Local run: processing history was saved locally.")
+    Требует:
+        permissions:
+          contents: write
+    """
+
+    if not os.environ.get(
+        "GITHUB_ACTIONS"
+    ):
+
+        print(
+            "ℹ️ Local run: "
+            "processing history saved locally."
+        )
+
         return True
 
     try:
+
         subprocess.run(
-            ["git", "config", "user.name", "github-actions[bot]"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+            [
+                "git",
+                "config",
+                "user.name",
+                "github-actions[bot]",
+            ],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -234,16 +557,44 @@ def persist_history_to_git():
         )
 
         subprocess.run(
-            ["git", "add", str(HISTORY_FILE)],
+            [
+                "git",
+                "config",
+                "user.email",
+                "41898282+github-actions[bot]@users.noreply.github.com",
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        subprocess.run(
+            [
+                "git",
+                "add",
+                str(HISTORY_FILE),
+            ],
             check=True,
         )
 
         diff = subprocess.run(
-            ["git", "diff", "--cached", "--quiet", "--", str(HISTORY_FILE)],
+            [
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                "--",
+                str(HISTORY_FILE),
+            ],
         )
 
         if diff.returncode == 0:
-            print("ℹ️ Processing history has no new Git changes.")
+
+            print(
+                "ℹ️ No new history changes to push."
+            )
+
             return True
 
         subprocess.run(
@@ -257,22 +608,101 @@ def persist_history_to_git():
         )
 
         subprocess.run(
-            ["git", "push"],
+            [
+                "git",
+                "push",
+            ],
             check=True,
         )
 
-        print("✅ Processing history pushed to GitHub")
+        print(
+            "✅ Processing history pushed to GitHub"
+        )
+
         return True
 
     except subprocess.CalledProcessError as error:
+
         print()
-        print("⚠️ Could not persist processing history to GitHub.")
         print(
-            "Make sure the workflow has "
-            "permissions: contents: write."
+            "⚠️ Could not persist processing "
+            "history to GitHub."
         )
-        print(f"Git error: {error}")
+
+        print(
+            "Make sure the workflow has:"
+        )
+
+        print(
+            "permissions:"
+        )
+
+        print(
+            "  contents: write"
+        )
+
+        print(
+            f"Git error: {error}"
+        )
+
         return False
+
+
+# ============================================================
+# SOURCE INFO
+# ============================================================
+
+def save_source_info(video):
+    """
+    Сохраняет выбранный источник между --download и --process.
+    """
+
+    SOURCE_INFO_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    SOURCE_INFO_FILE.write_text(
+        json.dumps(
+            video,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
+
+
+def load_source_info():
+    """
+    Восстанавливает metadata выбранного источника.
+    """
+
+    if not SOURCE_INFO_FILE.exists():
+        return {}
+
+    try:
+
+        data = json.loads(
+            SOURCE_INFO_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+
+    except Exception as error:
+
+        print(
+            f"⚠️ Could not read "
+            f"{SOURCE_INFO_FILE}: {error}"
+        )
+
+        return {}
+
+    return (
+        data
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 # ============================================================
@@ -281,69 +711,118 @@ def persist_history_to_git():
 
 def parse_duration(value):
     """
-    Преобразует длительность в секунды.
-
     Поддерживает:
-      - int / float
-      - HH:MM:SS
-      - MM:SS
+        int / float
+        HH:MM:SS
+        MM:SS
     """
 
     if value is None:
         return None
 
-    if isinstance(value, (int, float)):
+    if isinstance(
+        value,
+        (
+            int,
+            float,
+        ),
+    ):
         return float(value)
 
-    value = str(value).strip()
+    value = str(
+        value
+    ).strip()
 
     if not value:
         return None
 
     try:
+
         return float(value)
+
     except ValueError:
         pass
 
-    parts = value.split(":")
+    parts = value.split(
+        ":"
+    )
 
     try:
-        parts = [int(x) for x in parts]
+
+        parts = [
+            int(x)
+            for x in parts
+        ]
+
     except ValueError:
+
         return None
 
     if len(parts) == 3:
+
         hours, minutes, seconds = parts
-        return hours * 3600 + minutes * 60 + seconds
+
+        return (
+            hours * 3600
+            + minutes * 60
+            + seconds
+        )
 
     if len(parts) == 2:
+
         minutes, seconds = parts
-        return minutes * 60 + seconds
+
+        return (
+            minutes * 60
+            + seconds
+        )
 
     if len(parts) == 1:
-        return float(parts[0])
+
+        return float(
+            parts[0]
+        )
 
     return None
 
 
 def format_duration(seconds):
+
     if seconds is None:
         return "unknown"
 
-    seconds = int(seconds)
+    seconds = int(
+        seconds
+    )
 
     hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
+
+    minutes = (
+        seconds % 3600
+    ) // 60
+
     secs = seconds % 60
 
     if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-    return f"{minutes:02d}:{secs:02d}"
+        return (
+            f"{hours:02d}:"
+            f"{minutes:02d}:"
+            f"{secs:02d}"
+        )
+
+    return (
+        f"{minutes:02d}:"
+        f"{secs:02d}"
+    )
 
 
-def clean_source_file(remove_source_info=False):
-    """Удаляет старый source.mp4 и, при необходимости, его metadata."""
+def clean_source_file(
+    remove_source_info=False
+):
+    """
+    Удаляет старый source.mp4.
+    """
 
     SOURCE_VIDEO.parent.mkdir(
         parents=True,
@@ -351,17 +830,39 @@ def clean_source_file(remove_source_info=False):
     )
 
     if SOURCE_VIDEO.exists():
-        print("🗑 Removing old source.mp4")
+
+        print(
+            "🗑 Removing old source.mp4"
+        )
+
         SOURCE_VIDEO.unlink()
 
-    if remove_source_info and SOURCE_INFO_FILE.exists():
-        print("🗑 Removing old source.json")
+    if (
+        remove_source_info
+        and SOURCE_INFO_FILE.exists()
+    ):
+
+        print(
+            "🗑 Removing old source.json"
+        )
+
         SOURCE_INFO_FILE.unlink()
 
 
-def print_video_info(video, index=None):
-    title = video.get("title") or "Unknown title"
-    video_id = video.get("id") or "unknown"
+def print_video_info(
+    video,
+    index=None,
+):
+
+    title = (
+        video.get("title")
+        or "Unknown title"
+    )
+
+    video_id = (
+        video.get("id")
+        or "unknown"
+    )
 
     duration = parse_duration(
         video.get("duration")
@@ -388,20 +889,572 @@ def print_video_info(video, index=None):
 
 
 # ============================================================
-# GEMINI RETRY HELPERS
+# CLIP DUPLICATE DETECTION
 # ============================================================
 
-def is_gemini_rate_limit_error(error):
+def calculate_overlap_ratio(
+    start_a,
+    end_a,
+    start_b,
+    end_b,
+):
     """
-    Проверяет, является ли ошибка Gemini
-    ошибкой 429 RESOURCE_EXHAUSTED.
+    Возвращает процент пересечения относительно
+    меньшего из двух клипов.
 
-    Мы специально не анализируем/не меняем сам
-    Gemini selection. Только определяем,
-    можно ли повторить запрос.
+    Это лучше, чем сравнивать timestamps напрямую.
+
+    Например:
+
+        Published: 100 → 130
+        New:       105 → 135
+
+    Пересечение = 25 сек.
+
+    Меньший клип = 30 сек.
+
+    Ratio = 83%.
     """
 
-    error_text = str(error).lower()
+    try:
+
+        start_a = float(start_a)
+        end_a = float(end_a)
+
+        start_b = float(start_b)
+        end_b = float(end_b)
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return 0.0
+
+    if end_a <= start_a:
+        return 0.0
+
+    if end_b <= start_b:
+        return 0.0
+
+    intersection_start = max(
+        start_a,
+        start_b,
+    )
+
+    intersection_end = min(
+        end_a,
+        end_b,
+    )
+
+    if (
+        intersection_end
+        <= intersection_start
+    ):
+        return 0.0
+
+    intersection = (
+        intersection_end
+        - intersection_start
+    )
+
+    duration_a = (
+        end_a
+        - start_a
+    )
+
+    duration_b = (
+        end_b
+        - start_b
+    )
+
+    reference_duration = min(
+        duration_a,
+        duration_b,
+    )
+
+    if reference_duration <= 0:
+        return 0.0
+
+    return (
+        intersection
+        / reference_duration
+    )
+
+
+def is_duplicate_clip(
+    clip,
+    published_clips,
+):
+    """
+    Проверяет, является ли Gemini-клип уже опубликованным.
+    """
+
+    if not published_clips:
+        return False
+
+    try:
+
+        start = float(
+            clip["start"]
+        )
+
+        end = float(
+            clip["end"]
+        )
+
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ):
+
+        return True
+
+    for existing in published_clips:
+
+        try:
+
+            existing_start = float(
+                existing["start"]
+            )
+
+            existing_end = float(
+                existing["end"]
+            )
+
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        ratio = calculate_overlap_ratio(
+            start,
+            end,
+            existing_start,
+            existing_end,
+        )
+
+        if (
+            ratio
+            >= DUPLICATE_OVERLAP_RATIO
+        ):
+
+            print()
+            print(
+                "⏭ Duplicate clip detected"
+            )
+
+            print(
+                f"   New:      "
+                f"{start:.2f} → {end:.2f}"
+            )
+
+            print(
+                f"   Existing: "
+                f"{existing_start:.2f} → "
+                f"{existing_end:.2f}"
+            )
+
+            print(
+                f"   Overlap:  "
+                f"{ratio * 100:.1f}%"
+            )
+
+            return True
+
+    return False
+
+
+def normalize_clip_duration(
+    clip,
+    source_duration,
+):
+    """
+    Гарантирует длину клипа 20–60 секунд.
+
+    Это дополнительная защита main.py.
+
+    Даже если старый ai/clip_selector.py
+    вернул:
+
+        40.1 → 53.3
+
+    main.py превратит это примерно в:
+
+        40.1 → 60.1
+
+    если позволяет исходное видео.
+    """
+
+    try:
+
+        start = float(
+            clip["start"]
+        )
+
+        end = float(
+            clip["end"]
+        )
+
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ):
+
+        return None
+
+    if end <= start:
+        return None
+
+    source_duration = float(
+        source_duration
+    )
+
+    # --------------------------------------------------------
+    # Ограничиваем границы исходным видео
+    # --------------------------------------------------------
+
+    start = max(
+        0.0,
+        start,
+    )
+
+    end = min(
+        source_duration,
+        end,
+    )
+
+    if end <= start:
+        return None
+
+    duration = (
+        end - start
+    )
+
+    # --------------------------------------------------------
+    # Слишком длинный
+    # --------------------------------------------------------
+
+    if duration > MAX_CLIP_DURATION:
+
+        end = (
+            start
+            + MAX_CLIP_DURATION
+        )
+
+        if end > source_duration:
+
+            end = source_duration
+
+            start = max(
+                0.0,
+                end - MAX_CLIP_DURATION,
+            )
+
+    # --------------------------------------------------------
+    # Слишком короткий
+    # --------------------------------------------------------
+
+    duration = (
+        end - start
+    )
+
+    if duration < MIN_CLIP_DURATION:
+
+        needed = (
+            MIN_CLIP_DURATION
+            - duration
+        )
+
+        # Сначала расширяем вправо.
+        right_space = (
+            source_duration
+            - end
+        )
+
+        expand_right = min(
+            needed,
+            right_space,
+        )
+
+        end += expand_right
+
+        needed -= expand_right
+
+        # Если справа места не хватило,
+        # расширяем влево.
+        left_space = start
+
+        expand_left = min(
+            needed,
+            left_space,
+        )
+
+        start -= expand_left
+
+        needed -= expand_left
+
+        # Последняя попытка:
+        # если видео позволяет, центрируем
+        # 20-секундный отрезок.
+        if needed > 0:
+
+            center = (
+                start + end
+            ) / 2.0
+
+            start = max(
+                0.0,
+                center
+                - MIN_CLIP_DURATION / 2,
+            )
+
+            end = min(
+                source_duration,
+                start
+                + MIN_CLIP_DURATION,
+            )
+
+            if (
+                end - start
+                < MIN_CLIP_DURATION
+            ):
+
+                end = min(
+                    source_duration,
+                    MIN_CLIP_DURATION,
+                )
+
+                start = max(
+                    0.0,
+                    end
+                    - MIN_CLIP_DURATION,
+                )
+
+    # --------------------------------------------------------
+    # Финальная проверка
+    # --------------------------------------------------------
+
+    start = max(
+        0.0,
+        start,
+    )
+
+    end = min(
+        source_duration,
+        end,
+    )
+
+    final_duration = (
+        end - start
+    )
+
+    if (
+        final_duration
+        < MIN_CLIP_DURATION
+    ):
+
+        return None
+
+    if (
+        final_duration
+        > MAX_CLIP_DURATION
+    ):
+
+        end = (
+            start
+            + MAX_CLIP_DURATION
+        )
+
+        if end > source_duration:
+
+            end = source_duration
+
+            start = max(
+                0.0,
+                end - MAX_CLIP_DURATION,
+            )
+
+    normalized = dict(
+        clip
+    )
+
+    normalized["start"] = round(
+        start,
+        3,
+    )
+
+    normalized["end"] = round(
+        end,
+        3,
+    )
+
+    normalized["duration"] = round(
+        end - start,
+        3,
+    )
+
+    return normalized
+
+
+def prepare_new_clips(
+    candidates,
+    source_duration,
+    published_clips,
+    max_clips,
+):
+    """
+    Нормализует Gemini-кандидатов,
+    удаляет дубли и пересечения.
+    """
+
+    result = []
+
+    for index, candidate in enumerate(
+        candidates or [],
+        start=1,
+    ):
+
+        normalized = normalize_clip_duration(
+            candidate,
+            source_duration,
+        )
+
+        if normalized is None:
+
+            print(
+                f"⏭ Candidate #{index} "
+                f"could not be normalized."
+            )
+
+            continue
+
+        old_start = float(
+            candidate.get(
+                "start",
+                0,
+            )
+        )
+
+        old_end = float(
+            candidate.get(
+                "end",
+                0,
+            )
+        )
+
+        new_start = float(
+            normalized["start"]
+        )
+
+        new_end = float(
+            normalized["end"]
+        )
+
+        if (
+            abs(old_start - new_start)
+            > 0.01
+            or
+            abs(old_end - new_end)
+            > 0.01
+        ):
+
+            print()
+            print(
+                f"🔧 Candidate #{index} "
+                f"duration normalized:"
+            )
+
+            print(
+                f"   Gemini: "
+                f"{old_start:.2f} → "
+                f"{old_end:.2f} "
+                f"({old_end - old_start:.2f}s)"
+            )
+
+            print(
+                f"   Final:  "
+                f"{new_start:.2f} → "
+                f"{new_end:.2f} "
+                f"({new_end - new_start:.2f}s)"
+            )
+
+        if is_duplicate_clip(
+            normalized,
+            published_clips,
+        ):
+            continue
+
+        # ----------------------------------------------------
+        # Проверяем дубли между новыми кандидатами
+        # ----------------------------------------------------
+
+        duplicate_with_new = False
+
+        for existing_new in result:
+
+            ratio = calculate_overlap_ratio(
+                normalized["start"],
+                normalized["end"],
+                existing_new["start"],
+                existing_new["end"],
+            )
+
+            if (
+                ratio
+                >= DUPLICATE_OVERLAP_RATIO
+            ):
+
+                duplicate_with_new = True
+
+                print()
+                print(
+                    "⏭ New candidates overlap "
+                    "each other."
+                )
+
+                print(
+                    f"   Candidate: "
+                    f"{normalized['start']:.2f} → "
+                    f"{normalized['end']:.2f}"
+                )
+
+                print(
+                    f"   Existing:  "
+                    f"{existing_new['start']:.2f} → "
+                    f"{existing_new['end']:.2f}"
+                )
+
+                break
+
+        if duplicate_with_new:
+            continue
+
+        result.append(
+            normalized
+        )
+
+        if len(result) >= max_clips:
+            break
+
+    return result
+
+
+# ============================================================
+# GEMINI RETRY
+# ============================================================
+
+def is_gemini_rate_limit_error(
+    error
+):
+
+    error_text = str(
+        error
+    ).lower()
 
     if "429" in error_text:
         return True
@@ -418,20 +1471,13 @@ def is_gemini_rate_limit_error(error):
     return False
 
 
-def get_gemini_retry_delay(error):
-    """
-    Достаёт время ожидания из сообщения Gemini.
+def get_gemini_retry_delay(
+    error
+):
 
-    Например Gemini возвращает:
-
-        Please retry in 33.533170356s.
-
-    Функция вернёт:
-
-        33.533170356
-    """
-
-    error_text = str(error)
+    error_text = str(
+        error
+    )
 
     patterns = [
         r"Please retry in\s+([0-9]+(?:\.[0-9]+)?)\s*s",
@@ -450,6 +1496,7 @@ def get_gemini_retry_delay(error):
         if match:
 
             try:
+
                 return float(
                     match.group(1)
                 )
@@ -468,26 +1515,7 @@ def select_clips_with_retry(
     max_clips,
 ):
     """
-    Вызывает оригинальный select_clips()
-    без изменения его логики.
-
-    Единственное отличие:
-    если Gemini возвращает 429 RESOURCE_EXHAUSTED,
-    ждём ровно столько, сколько рекомендует Gemini,
-    и повторяем тот же запрос.
-
-    Пример:
-
-        429
-        Please retry in 33.5s
-
-        ↓
-
-        sleep 35.0s
-
-        ↓
-
-        select_clips() повторно
+    Вызывает select_clips() с retry при 429.
     """
 
     attempt = 0
@@ -514,12 +1542,6 @@ def select_clips_with_retry(
 
         try:
 
-            # ====================================================
-            # ВАЖНО:
-            # Здесь вызывается оригинальный select_clips()
-            # без каких-либо изменений.
-            # ====================================================
-
             return select_clips(
                 transcript_words,
                 max_clips=max_clips,
@@ -530,15 +1552,7 @@ def select_clips_with_retry(
             if not is_gemini_rate_limit_error(
                 error
             ):
-
-                # Это НЕ 429.
-                # Оставляем поведение как раньше:
-                # ошибка сразу выходит наружу.
                 raise
-
-            # ----------------------------------------------------
-            # 429 RESOURCE_EXHAUSTED
-            # ----------------------------------------------------
 
             if (
                 attempt
@@ -546,15 +1560,9 @@ def select_clips_with_retry(
             ):
 
                 print()
-
                 print(
                     "❌ Gemini rate limit "
                     "retry limit exceeded."
-                )
-
-                print(
-                    f"Maximum retries: "
-                    f"{GEMINI_MAX_RETRIES}"
                 )
 
                 raise
@@ -572,25 +1580,17 @@ def select_clips_with_retry(
                 )
 
                 print()
-
                 print(
                     "⚠️ Gemini returned 429, "
                     "but retry time could not "
                     "be detected."
                 )
 
-                print(
-                    f"Using default wait: "
-                    f"{retry_delay:.1f}s"
-                )
-
             else:
 
                 print()
-
                 print(
-                    "⚠️ Gemini rate limit "
-                    "reached."
+                    "⚠️ Gemini rate limit reached."
                 )
 
                 print(
@@ -598,9 +1598,6 @@ def select_clips_with_retry(
                     f"in {retry_delay:.3f}s"
                 )
 
-            # Добавляем небольшой запас,
-            # чтобы не повторить запрос ровно
-            # в момент окончания лимита.
             wait_time = (
                 retry_delay
                 + GEMINI_RETRY_BUFFER
@@ -612,9 +1609,6 @@ def select_clips_with_retry(
                 f"before retry..."
             )
 
-            # Показываем обратный отсчёт
-            # в Actions, чтобы было понятно,
-            # что процесс не завис.
             remaining = wait_time
 
             while remaining > 0:
@@ -635,7 +1629,6 @@ def select_clips_with_retry(
                 remaining -= sleep_for
 
             print()
-
             print(
                 "🔄 Retrying Gemini request..."
             )
@@ -646,9 +1639,6 @@ def select_clips_with_retry(
 # ============================================================
 
 def get_rutube_videos():
-    """
-    Получает список видео с RUTUBE-канала.
-    """
 
     print("=" * 70)
     print("📺 RUTUBE")
@@ -678,7 +1668,7 @@ def get_rutube_videos():
                 download=False,
             )
 
-    except Exception as e:
+    except Exception as error:
 
         print()
         print(
@@ -686,7 +1676,7 @@ def get_rutube_videos():
         )
 
         print(
-            f"Error: {e}"
+            f"Error: {error}"
         )
 
         return []
@@ -711,15 +1701,21 @@ def get_rutube_videos():
         if not entry:
             continue
 
-        video = dict(entry)
+        video = dict(
+            entry
+        )
 
-        video_id = video.get("id")
+        video_id = video.get(
+            "id"
+        )
 
         if not video_id:
             continue
 
         webpage_url = (
-            video.get("webpage_url")
+            video.get(
+                "webpage_url"
+            )
         )
 
         if not webpage_url:
@@ -729,9 +1725,13 @@ def get_rutube_videos():
                 f"{video_id}/"
             )
 
-        video["webpage_url"] = webpage_url
+        video["webpage_url"] = (
+            webpage_url
+        )
 
-        videos.append(video)
+        videos.append(
+            video
+        )
 
     print(
         f"Found {len(videos)} channel entries"
@@ -742,11 +1742,9 @@ def get_rutube_videos():
     return videos
 
 
-def get_video_details(video):
-    """
-    Получает полную информацию
-    о конкретном RUTUBE-видео.
-    """
+def get_video_details(
+    video
+):
 
     url = video.get(
         "webpage_url"
@@ -774,39 +1772,101 @@ def get_video_details(video):
 
         return info
 
-    except Exception as e:
+    except Exception as error:
 
         print(
             f"⚠️ Could not read "
-            f"video details: {e}"
+            f"video details: {error}"
         )
 
         return None
 
 
-def select_rutube_videos(videos):
-    """Выбирает подходящие длинные и ещё не обработанные видео."""
+def get_video_sort_date(
+    video
+):
+
+    upload_date = video.get(
+        "upload_date"
+    )
+
+    if upload_date:
+
+        try:
+
+            return datetime.strptime(
+                upload_date,
+                "%Y%m%d",
+            ).replace(
+                tzinfo=timezone.utc
+            )
+
+        except Exception:
+            pass
+
+    timestamp = video.get(
+        "timestamp"
+    )
+
+    if timestamp:
+
+        try:
+
+            return datetime.fromtimestamp(
+                timestamp,
+                tz=timezone.utc,
+            )
+
+        except Exception:
+            pass
+
+    return datetime.min.replace(
+        tzinfo=timezone.utc
+    )
+
+
+def select_rutube_videos(
+    videos
+):
+    """
+    Выбирает длинные RUTUBE-видео.
+
+    ВАЖНО:
+    ранее обработанные видео НЕ исключаются.
+
+    Мы специально возвращаем их в очередь,
+    чтобы Gemini мог искать новые моменты.
+    """
 
     print("=" * 70)
     print("🔎 FILTERING RUTUBE VIDEOS")
     print("=" * 70)
 
     history = load_processing_history()
+
     processed_ids = {
         str(video_id)
-        for video_id in history.get("videos", {}).keys()
+        for video_id in history.get(
+            "videos",
+            {},
+        ).keys()
     }
 
     print(
-        f"Previously processed sources: {len(processed_ids)}"
+        f"Sources with history: "
+        f"{len(processed_ids)}"
     )
 
     candidates = []
 
-    for index, video in enumerate(
+    for index, original_video in enumerate(
         videos,
         start=1,
     ):
+
+        video = dict(
+            original_video
+        )
 
         url = video.get(
             "webpage_url"
@@ -815,22 +1875,44 @@ def select_rutube_videos(videos):
         if not url:
             continue
 
-        video_id = str(video.get("id") or "").strip()
+        video_id = str(
+            video.get("id") or ""
+        ).strip()
 
         if not video_id:
             continue
 
-        if video_id in processed_ids:
+        title = (
+            video.get("title")
+            or ""
+        )
+
+        title_lower = title.lower()
+
+        # ----------------------------------------------------
+        # НЕ СКАЧИВАЕМ очевидные Shorts
+        # ----------------------------------------------------
+
+        if (
+            "shorts" in title_lower
+            or "short" in title_lower
+        ):
+
             print(
-                f"⏭ Already processed: "
-                f"{video.get('title', 'Unknown')} "
-                f"(ID: {video_id})"
+                f"⏭ Possible Shorts: "
+                f"{title}"
             )
+
             continue
 
         duration = parse_duration(
             video.get("duration")
         )
+
+        # ----------------------------------------------------
+        # Если duration нет — только тогда
+        # запрашиваем полную информацию.
+        # ----------------------------------------------------
 
         if duration is None:
 
@@ -839,7 +1921,9 @@ def select_rutube_videos(videos):
             )
 
             full_info = (
-                get_video_details(video)
+                get_video_details(
+                    video
+                )
             )
 
             if not full_info:
@@ -851,6 +1935,25 @@ def select_rutube_videos(videos):
                 video.get("duration")
             )
 
+            title = (
+                video.get("title")
+                or title
+            )
+
+            title_lower = title.lower()
+
+            if (
+                "shorts" in title_lower
+                or "short" in title_lower
+            ):
+
+                print(
+                    f"⏭ Possible Shorts: "
+                    f"{title}"
+                )
+
+                continue
+
         if duration is None:
 
             print(
@@ -859,104 +1962,148 @@ def select_rutube_videos(videos):
 
             continue
 
+        # ----------------------------------------------------
+        # Жёсткий фильтр коротких исходников
+        # ----------------------------------------------------
+
         if duration < MIN_SOURCE_DURATION:
 
             print(
                 f"⏭ Too short: "
-                f"{video.get('title', 'Unknown')} "
+                f"{title or 'Unknown'} "
                 f"({format_duration(duration)})"
             )
 
             continue
 
-        title = (
-            video.get("title")
-            or ""
-        ).lower()
-
-        if "shorts" in title:
-
-            print(
-                f"⏭ Possible Shorts: "
-                f"{video.get('title', 'Unknown')}"
+        video["_sort_date"] = (
+            get_video_sort_date(
+                video
             )
-
-            continue
-
-        upload_date = video.get(
-            "upload_date"
         )
 
-        if upload_date:
+        video["_has_history"] = (
+            video_id in processed_ids
+        )
 
-            try:
-
-                sort_date = (
-                    datetime.strptime(
-                        upload_date,
-                        "%Y%m%d",
-                    ).replace(
-                        tzinfo=timezone.utc
-                    )
+        video["_published_clips_count"] = (
+            len(
+                get_published_clips(
+                    video_id
                 )
-
-            except Exception:
-
-                sort_date = (
-                    datetime.min.replace(
-                        tzinfo=timezone.utc
-                    )
-                )
-
-        else:
-
-            timestamp = video.get(
-                "timestamp"
             )
+        )
 
-            if timestamp:
+        candidates.append(
+            video
+        )
 
-                try:
+    # ========================================================
+    # СОРТИРОВКА
+    #
+    # 1. Сначала новые источники, которые
+    #    ещё вообще не публиковались.
+    #
+    # 2. Затем старые источники.
+    #
+    # Среди старых сначала те,
+    # которые обрабатывались давно.
+    # ========================================================
 
-                    sort_date = (
-                        datetime.fromtimestamp(
-                            timestamp,
-                            tz=timezone.utc,
-                        )
-                    )
+    new_videos = [
+        video
+        for video in candidates
+        if not video.get(
+            "_has_history"
+        )
+    ]
 
-                except Exception:
+    old_videos = [
+        video
+        for video in candidates
+        if video.get(
+            "_has_history"
+        )
+    ]
 
-                    sort_date = (
-                        datetime.min.replace(
-                            tzinfo=timezone.utc
-                        )
-                    )
-
-            else:
-
-                sort_date = (
-                    datetime.min.replace(
-                        tzinfo=timezone.utc
-                    )
-                )
-
-        video["_sort_date"] = sort_date
-
-        candidates.append(video)
-
-    candidates.sort(
-        key=lambda x: x.get(
+    new_videos.sort(
+        key=lambda video: video.get(
             "_sort_date"
         ),
         reverse=True,
     )
 
+    def old_video_sort_key(
+        video
+    ):
+
+        video_id = str(
+            video.get("id") or ""
+        )
+
+        item = history.get(
+            "videos",
+            {},
+        ).get(
+            video_id,
+            {},
+        )
+
+        last_processed = (
+            item.get(
+                "last_processed_at"
+            )
+            or item.get(
+                "processed_at"
+            )
+            or ""
+        )
+
+        if last_processed:
+
+            try:
+
+                dt = datetime.fromisoformat(
+                    last_processed.replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
+
+                return dt
+
+            except Exception:
+                pass
+
+        return datetime.min.replace(
+            tzinfo=timezone.utc
+        )
+
+    old_videos.sort(
+        key=old_video_sort_key
+    )
+
+    candidates = (
+        new_videos
+        + old_videos
+    )
+
     print()
+    print(
+        f"Suitable long videos: "
+        f"{len(candidates)}"
+    )
+
+    print()
+    print(
+        f"New sources: "
+        f"{len(new_videos)}"
+    )
 
     print(
-        f"Suitable videos: "
-        f"{len(candidates)}"
+        f"Sources available "
+        f"for re-processing: "
+        f"{len(old_videos)}"
     )
 
     print()
@@ -966,9 +2113,34 @@ def select_rutube_videos(videos):
         start=1,
     ):
 
+        video_id = str(
+            video.get("id") or ""
+        )
+
+        published_count = (
+            video.get(
+                "_published_clips_count",
+                0,
+            )
+        )
+
+        status = (
+            "🆕 NEW"
+            if not video.get(
+                "_has_history"
+            )
+            else (
+                f"🔄 RECHECK "
+                f"({published_count} published)"
+            )
+        )
+
+        print(
+            f"[{index}] {status}"
+        )
+
         print_video_info(
-            video,
-            index,
+            video
         )
 
         print()
@@ -980,12 +2152,9 @@ def select_rutube_videos(videos):
 # DOWNLOAD
 # ============================================================
 
-def download_rutube_video(video):
-    """
-    Скачивает RUTUBE-видео в:
-
-        input/source.mp4
-    """
+def download_rutube_video(
+    video
+):
 
     url = video.get(
         "webpage_url"
@@ -1018,7 +2187,9 @@ def download_rutube_video(video):
 
     print()
 
-    clean_source_file(remove_source_info=True)
+    clean_source_file(
+        remove_source_info=True
+    )
 
     SOURCE_VIDEO.parent.mkdir(
         parents=True,
@@ -1066,7 +2237,9 @@ def download_rutube_video(video):
             ydl_opts
         ) as ydl:
 
-            ydl.download([url])
+            ydl.download(
+                [url]
+            )
 
         elapsed = (
             time.time()
@@ -1080,16 +2253,15 @@ def download_rutube_video(video):
             f"{elapsed:.1f}s"
         )
 
-    except Exception as e:
+    except Exception as error:
 
         print()
-
         print(
             "❌ RUTUBE download failed"
         )
 
         print(
-            f"Error: {e}"
+            f"Error: {error}"
         )
 
         clean_source_file()
@@ -1105,7 +2277,6 @@ def download_rutube_video(video):
         )
 
         print()
-
         print(
             "✅ source.mp4 created"
         )
@@ -1124,8 +2295,14 @@ def download_rutube_video(video):
 
             return False
 
-        save_source_info(video)
-        print(f"💾 Source metadata saved: {SOURCE_INFO_FILE}")
+        save_source_info(
+            video
+        )
+
+        print(
+            f"💾 Source metadata saved: "
+            f"{SOURCE_INFO_FILE}"
+        )
 
         return True
 
@@ -1138,24 +2315,26 @@ def download_rutube_video(video):
     possible_files = [
         path
         for path in possible_files
-        if path.is_file()
-        and path.name != "source.mp4"
-        and path.suffix.lower()
-        in {
-            ".mkv",
-            ".webm",
-            ".mov",
-            ".mp4",
-            ".m4v",
-        }
+        if (
+            path.is_file()
+            and path.name != "source.mp4"
+            and path.suffix.lower()
+            in {
+                ".mkv",
+                ".webm",
+                ".mov",
+                ".mp4",
+                ".m4v",
+            }
+        )
     ]
 
     if possible_files:
 
         source = max(
             possible_files,
-            key=lambda p:
-            p.stat().st_size,
+            key=lambda path:
+            path.stat().st_size,
         )
 
         print(
@@ -1182,11 +2361,11 @@ def download_rutube_video(video):
                 missing_ok=True
             )
 
-        except Exception as e:
+        except Exception as error:
 
             print(
                 f"❌ Could not convert "
-                f"source to MP4: {e}"
+                f"source to MP4: {error}"
             )
 
             return False
@@ -1198,8 +2377,14 @@ def download_rutube_video(video):
                 "input/source.mp4"
             )
 
-            save_source_info(video)
-            print(f"💾 Source metadata saved: {SOURCE_INFO_FILE}")
+            save_source_info(
+                video
+            )
+
+            print(
+                f"💾 Source metadata saved: "
+                f"{SOURCE_INFO_FILE}"
+            )
 
             return True
 
@@ -1239,12 +2424,12 @@ def find_and_download():
     print("🎯 DOWNLOAD CANDIDATES")
     print("=" * 70)
 
-    candidates_to_try = candidates[:10]
-
-    if not candidates_to_try:
-        raise RuntimeError(
-            "❌ All recent RUTUBE sources were already processed."
-        )
+    # Весь список теперь доступен.
+    # Но скачиваем по одному.
+    #
+    # extract_flat уже получил весь канал,
+    # поэтому здесь нет лимита 300.
+    candidates_to_try = candidates
 
     for index, video in enumerate(
         candidates_to_try,
@@ -1252,7 +2437,6 @@ def find_and_download():
     ):
 
         print()
-
         print(
             f"Attempt {index}/"
             f"{len(candidates_to_try)}"
@@ -1267,7 +2451,6 @@ def find_and_download():
         ):
 
             print()
-
             print(
                 "🎉 RUTUBE source ready"
             )
@@ -1280,7 +2463,6 @@ def find_and_download():
         ):
 
             print()
-
             print(
                 f"Waiting {RETRY_DELAY}s "
                 f"before next video..."
@@ -1297,6 +2479,160 @@ def find_and_download():
 
 
 # ============================================================
+# SELECT NEW CLIPS
+# ============================================================
+
+def select_new_clips(
+    transcript_words,
+    source_duration,
+    source_video_info,
+):
+    """
+    Выбирает новые клипы.
+
+    Если Gemini снова возвращает уже опубликованные
+    фрагменты — повторяем запрос несколько раз.
+
+    Таким образом старое видео можно постепенно
+    разбирать на новые Shorts.
+    """
+
+    source_id = str(
+        source_video_info.get(
+            "id"
+        )
+        or ""
+    ).strip()
+
+    published_clips = (
+        get_published_clips(
+            source_id
+        )
+    )
+
+    print()
+    print(
+        f"📚 Previously published clips "
+        f"from this source: "
+        f"{len(published_clips)}"
+    )
+
+    for index, clip in enumerate(
+        published_clips,
+        start=1,
+    ):
+
+        print(
+            f"   #{index}: "
+            f"{clip['start']:.2f} → "
+            f"{clip['end']:.2f}"
+            + (
+                f" | YouTube: "
+                f"{clip.get('youtube_video_id')}"
+                if clip.get(
+                    "youtube_video_id"
+                )
+                else ""
+            )
+        )
+
+    all_new_clips = []
+
+    for attempt in range(
+        1,
+        MAX_CLIP_SELECTION_ATTEMPTS + 1,
+    ):
+
+        print()
+        print(
+            "=" * 60
+        )
+
+        print(
+            f"🤖 Gemini selection attempt "
+            f"{attempt}/"
+            f"{MAX_CLIP_SELECTION_ATTEMPTS}"
+        )
+
+        print(
+            "=" * 60
+        )
+
+        candidates = (
+            select_clips_with_retry(
+                transcript_words,
+                max_clips=MAX_CLIPS,
+            )
+        )
+
+        if not candidates:
+
+            print(
+                "⚠️ Gemini returned no candidates."
+            )
+
+            continue
+
+        print()
+        print(
+            f"Gemini candidates: "
+            f"{len(candidates)}"
+        )
+
+        new_clips = prepare_new_clips(
+            candidates,
+            source_duration,
+            published_clips,
+            MAX_CLIPS - len(all_new_clips),
+        )
+
+        for clip in new_clips:
+
+            duplicate = False
+
+            for existing in all_new_clips:
+
+                ratio = calculate_overlap_ratio(
+                    clip["start"],
+                    clip["end"],
+                    existing["start"],
+                    existing["end"],
+                )
+
+                if (
+                    ratio
+                    >= DUPLICATE_OVERLAP_RATIO
+                ):
+
+                    duplicate = True
+                    break
+
+            if not duplicate:
+
+                all_new_clips.append(
+                    clip
+                )
+
+        if len(all_new_clips) >= MAX_CLIPS:
+
+            break
+
+        print()
+        print(
+            f"⚠️ Only "
+            f"{len(all_new_clips)} new clip(s) "
+            f"found."
+        )
+
+        print(
+            "🔄 Asking Gemini for additional "
+            "candidates..."
+        )
+
+    return all_new_clips[:MAX_CLIPS]
+
+
+# ============================================================
 # PROCESS VIDEO
 # ============================================================
 
@@ -1309,14 +2645,20 @@ def process_video():
     print("=" * 70)
 
     if not SELECTED_SOURCE_VIDEO_INFO:
-        SELECTED_SOURCE_VIDEO_INFO = load_source_info()
+
+        SELECTED_SOURCE_VIDEO_INFO = (
+            load_source_info()
+        )
 
     if SELECTED_SOURCE_VIDEO_INFO:
+
         print()
+
         print(
             "📺 Source: "
             f"{SELECTED_SOURCE_VIDEO_INFO.get('title', 'Unknown')}"
         )
+
         print(
             "🆔 Source ID: "
             f"{SELECTED_SOURCE_VIDEO_INFO.get('id', 'unknown')}"
@@ -1413,45 +2755,57 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # 4. Gemini — select clips
+    # 4. Gemini
     # --------------------------------------------------------
 
     print()
 
     print(
-        "4️⃣ Selecting clips with Gemini..."
+        "4️⃣ Selecting NEW clips with Gemini..."
     )
 
-    # ========================================================
-    # ВАЖНО:
-    #
-    # Сам select_clips() НЕ ИЗМЕНЁН.
-    #
-    # Добавлен только внешний retry для 429.
-    # Если Gemini сообщает:
-    #
-    # Please retry in 33.533170356s
-    #
-    # скрипт ждёт это время + небольшой запас
-    # и повторяет ТОТ ЖЕ запрос.
-    # ========================================================
-
-    clips = select_clips_with_retry(
+    clips = select_new_clips(
         transcript["words"],
-        max_clips=MAX_CLIPS,
+        duration,
+        SELECTED_SOURCE_VIDEO_INFO,
     )
 
     if not clips:
 
-        raise RuntimeError(
-            "❌ Gemini did not "
-            "return clips"
+        print()
+        print(
+            "=" * 70
         )
+
+        print(
+            "ℹ️ NO NEW CLIPS FOUND"
+        )
+
+        print(
+            "=" * 70
+        )
+
+        print()
+        print(
+            "Gemini did not find a new "
+            "non-duplicate clip in this source."
+        )
+
+        print(
+            "The source remains available "
+            "for future re-processing."
+        )
+
+        print(
+            "=" * 70
+        )
+
+        return
 
     print()
 
     print(
-        f"Selected clips: "
+        f"🆕 New clips selected: "
         f"{len(clips)}"
     )
 
@@ -1519,7 +2873,7 @@ def process_video():
     )
 
     # --------------------------------------------------------
-    # 6 + 7 + 8. Subtitles + Metadata + Thumbnails
+    # 6 + 7 + 8
     # --------------------------------------------------------
 
     print()
@@ -1580,7 +2934,6 @@ def process_video():
         )
 
         print()
-
         print(
             "=" * 60
         )
@@ -1598,6 +2951,11 @@ def process_video():
             f"Time: "
             f"{float(clip['start']):.2f} → "
             f"{float(clip['end']):.2f}"
+        )
+
+        print(
+            f"Duration: "
+            f"{float(clip['end']) - float(clip['start']):.2f}s"
         )
 
         print(
@@ -1658,7 +3016,6 @@ def process_video():
         )
 
         print()
-
         print(
             "✅ Subtitle video created"
         )
@@ -1685,10 +3042,6 @@ def process_video():
                 f"failed for clip {index}"
             )
 
-        # ----------------------------------------------------
-        # SAVE METADATA JSON
-        # ----------------------------------------------------
-
         metadata_path.write_text(
             json.dumps(
                 metadata,
@@ -1703,7 +3056,6 @@ def process_video():
         )
 
         print()
-
         print(
             "✅ Metadata created"
         )
@@ -1855,20 +3207,19 @@ def process_video():
 
             tags = []
 
-        # upload_video() ожидает hashtags
-        # как готовую строку.
         hashtags_text = " ".join(
             str(item).strip()
             for item in hashtags
             if str(item).strip()
         )
 
-        # tags должны передаваться списком.
         clean_tags = []
 
         for tag in tags:
 
-            tag = str(tag).strip()
+            tag = str(
+                tag
+            ).strip()
 
             if not tag:
                 continue
@@ -1877,11 +3228,17 @@ def process_video():
                 tag = tag[1:]
 
             if tag not in clean_tags:
-                clean_tags.append(tag)
+                clean_tags.append(
+                    tag
+                )
 
         youtube_video_id = upload_video(
-            video_path=str(final_path),
-            thumbnail_path=str(thumbnail_path),
+            video_path=str(
+                final_path
+            ),
+            thumbnail_path=str(
+                thumbnail_path
+            ),
             title=title,
             description=description,
             hashtags=hashtags_text,
@@ -1900,7 +3257,6 @@ def process_video():
         )
 
         print()
-
         print(
             f"✅ Clip {index} published "
             f"to YouTube"
@@ -1916,6 +3272,48 @@ def process_video():
             f"https://www.youtube.com/watch?v="
             f"{youtube_video_id}"
         )
+
+        # ====================================================
+        # ВАЖНО:
+        #
+        # Записываем клип в историю СРАЗУ после успешного
+        # upload.
+        #
+        # Поэтому если следующий клип упадёт с ошибкой,
+        # первый уже не будет опубликован повторно.
+        # ====================================================
+
+        if SELECTED_SOURCE_VIDEO_INFO:
+
+            history_saved = (
+                record_published_clip(
+                    SELECTED_SOURCE_VIDEO_INFO,
+                    clip,
+                    youtube_video_id,
+                )
+            )
+
+            if not history_saved:
+
+                print(
+                    "⚠️ WARNING: YouTube upload "
+                    "succeeded but history save failed."
+                )
+
+            else:
+
+                # Сразу пытаемся отправить history
+                # в GitHub, чтобы следующий Actions run
+                # уже знал об этом опубликованном клипе.
+                persist_history_to_git()
+
+        else:
+
+            print(
+                "⚠️ Source metadata unavailable. "
+                "Published clip could not be linked "
+                "to a RUTUBE source."
+            )
 
     # --------------------------------------------------------
     # FINAL CHECK
@@ -2067,73 +3465,66 @@ def process_video():
     )
 
     print(
-        f"   Clips selected:     {len(clips)}"
+        f"   New clips selected: "
+        f"{len(clips)}"
     )
 
     print(
-        f"   Videos rendered:    {len(final_videos)}"
+        f"   Videos rendered:    "
+        f"{len(final_videos)}"
     )
 
     print(
-        f"   Metadata created:   {len(metadata_files)}"
+        f"   Metadata created:   "
+        f"{len(metadata_files)}"
     )
 
     print(
-        f"   Thumbnails created: {len(thumbnail_files)}"
+        f"   Thumbnails created: "
+        f"{len(thumbnail_files)}"
     )
 
     print(
-        f"   YouTube uploads:    {len(uploaded_videos)}"
+        f"   YouTube uploads:    "
+        f"{len(uploaded_videos)}"
     )
 
     print()
 
-    if len(final_videos) != len(clips):
+    if len(final_videos) != len(
+        clips
+    ):
 
         raise RuntimeError(
             "❌ Final video count does not "
             "match selected clip count"
         )
 
-    if len(metadata_files) != len(clips):
+    if len(metadata_files) != len(
+        clips
+    ):
 
         raise RuntimeError(
             "❌ Metadata count does not "
             "match selected clip count"
         )
 
-    if len(thumbnail_files) != len(clips):
+    if len(thumbnail_files) != len(
+        clips
+    ):
 
         raise RuntimeError(
             "❌ Thumbnail count does not "
             "match selected clip count"
         )
 
-    if len(uploaded_videos) != len(clips):
+    if len(uploaded_videos) != len(
+        clips
+    ):
 
         raise RuntimeError(
             "❌ YouTube upload count does not "
             "match selected clip count"
-        )
-
-    # --------------------------------------------------------
-    # PERSIST SOURCE HISTORY
-    # --------------------------------------------------------
-
-    if SELECTED_SOURCE_VIDEO_INFO:
-        history_saved = mark_video_processed(
-            SELECTED_SOURCE_VIDEO_INFO,
-            clips,
-            uploaded_videos,
-        )
-
-        if history_saved:
-            persist_history_to_git()
-    else:
-        print()
-        print(
-            "⚠️ Source metadata is unavailable; "
-            "processed source was not added to history."
         )
 
     print(
@@ -2145,7 +3536,12 @@ def process_video():
     )
 
     print(
-        "📺 All selected Shorts uploaded to YouTube"
+        "📺 All NEW selected Shorts uploaded to YouTube"
+    )
+
+    print(
+        "🔁 Source remains available "
+        "for future re-processing."
     )
 
     print(
