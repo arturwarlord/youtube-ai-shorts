@@ -178,10 +178,17 @@
           "published_at": "2026-10-02T20:10:26.561782+00:00",
           "start": 417.62,
           "youtube_video_id": "vA2d1oEtPSA"
+        },
+        {
+          "duration": 50.12,
+          "end": 2510.62,
+          "published_at": "2026-10-02T20:11:11.005788+00:00",
+          "start": 2460.5,
+          "youtube_video_id": "vs1rDqL1sto"
         }
       ],
       "id": "f8cfffeeacefc7ebb939d28503ee94c0",
-      "last_processed_at": "2026-10-02T20:10:26.561796+00:00",
+      "last_processed_at": "2026-10-02T20:11:11.005803+00:00",
       "title": "Дороничев: ии — пузырь, который скоро лопнет. Какие перемены ждут мир?",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/f8cfffeeacefc7ebb939d28503ee94c0/"
