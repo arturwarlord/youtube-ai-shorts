@@ -46,10 +46,17 @@
           "published_at": "2026-10-03T00:23:13.547372+00:00",
           "start": 3.8,
           "youtube_video_id": "6r2nAzSMZv0"
+        },
+        {
+          "duration": 59.68,
+          "end": 3824.15,
+          "published_at": "2026-10-03T00:24:12.190183+00:00",
+          "start": 3764.47,
+          "youtube_video_id": "gDCAavusExU"
         }
       ],
       "id": "51691950f83508fb68df6c8cf0519909",
-      "last_processed_at": "2026-10-03T00:23:13.547387+00:00",
+      "last_processed_at": "2026-10-03T00:24:12.190198+00:00",
       "title": "Роберт Сапольски: «Свобода воли — это иллюзия!»",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/51691950f83508fb68df6c8cf0519909/"
