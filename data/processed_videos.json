@@ -134,10 +134,17 @@
           "published_at": "2026-10-03T18:53:59.185706+00:00",
           "start": 872.64,
           "youtube_video_id": "kOTXzYp-91A"
+        },
+        {
+          "duration": 20.0,
+          "end": 55.62,
+          "published_at": "2026-10-03T18:54:27.298062+00:00",
+          "start": 35.62,
+          "youtube_video_id": "QafLRhlw6zo"
         }
       ],
       "id": "73f095a2c85ff21c9daa7166633602ac",
-      "last_processed_at": "2026-10-03T18:53:59.185718+00:00",
+      "last_processed_at": "2026-10-03T18:54:27.298076+00:00",
       "title": "Если человек говорит это - спасайтесь! Как распознать психопата? Василий Фауст",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/73f095a2c85ff21c9daa7166633602ac/"
