@@ -1,5 +1,21 @@
 {
   "videos": {
+    "0f64f23e414269ad7dc70aeb6495c95e": {
+      "clips": [
+        {
+          "duration": 42.22,
+          "end": 268.46,
+          "published_at": "2026-10-03T14:15:13.990976+00:00",
+          "start": 226.24,
+          "youtube_video_id": "XWGMJsSfMHE"
+        }
+      ],
+      "id": "0f64f23e414269ad7dc70aeb6495c95e",
+      "last_processed_at": "2026-10-03T14:15:13.990990+00:00",
+      "title": "Будущее с ии: сценарий, о котором боятся говорить | Либерманы",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/0f64f23e414269ad7dc70aeb6495c95e/"
+    },
     "39b3f0ef5d125ee97767cf72ba830de3": {
       "clips": [
         {
