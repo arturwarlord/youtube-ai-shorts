@@ -247,10 +247,17 @@
           "published_at": "2026-10-04T14:42:20.643609+00:00",
           "start": 50.78,
           "youtube_video_id": "l2LDVlB3cCw"
+        },
+        {
+          "duration": 46.63,
+          "end": 1120.22,
+          "published_at": "2026-10-04T14:43:10.208240+00:00",
+          "start": 1073.59,
+          "youtube_video_id": "T1iP14wzhPU"
         }
       ],
       "id": "f51cd1e30bf93310685ec408079a066d",
-      "last_processed_at": "2026-10-04T14:42:20.643622+00:00",
+      "last_processed_at": "2026-10-04T14:43:10.208254+00:00",
       "title": "49 минут, которые изменят ваше понимание Вселенной | Владимир Сурдин",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/f51cd1e30bf93310685ec408079a066d/"
