@@ -157,10 +157,17 @@
           "published_at": "2026-10-04T18:57:27.821766+00:00",
           "start": 557.32,
           "youtube_video_id": "MLzu7lOzhoE"
+        },
+        {
+          "duration": 39.16,
+          "end": 1052.34,
+          "published_at": "2026-10-04T18:58:00.315635+00:00",
+          "start": 1013.18,
+          "youtube_video_id": "goGfJZlFSS8"
         }
       ],
       "id": "99e29ca1c9029c6d03a68266daa686df",
-      "last_processed_at": "2026-10-04T18:57:27.821779+00:00",
+      "last_processed_at": "2026-10-04T18:58:00.315648+00:00",
       "title": "Мы застряли в Солнечной системе, и вот почему... | Михаил Никитин, Борис Штерн",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/99e29ca1c9029c6d03a68266daa686df/"
