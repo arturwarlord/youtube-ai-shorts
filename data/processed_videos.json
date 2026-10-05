@@ -203,10 +203,17 @@
           "published_at": "2026-10-05T22:10:46.583993+00:00",
           "start": 1616.64,
           "youtube_video_id": "LMaFEyKTVZ8"
+        },
+        {
+          "duration": 40.7,
+          "end": 625.0,
+          "published_at": "2026-10-05T22:11:33.796615+00:00",
+          "start": 584.3,
+          "youtube_video_id": "ThsKMbi30OY"
         }
       ],
       "id": "acf17326a90cccb55e855381b2f12c80",
-      "last_processed_at": "2026-10-05T22:10:46.584007+00:00",
+      "last_processed_at": "2026-10-05T22:11:33.796631+00:00",
       "title": "Кишечник будет как новый! Гастроэнтеролог №1 про здоровье жкт",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/acf17326a90cccb55e855381b2f12c80/"
