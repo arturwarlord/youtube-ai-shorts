@@ -291,10 +291,17 @@
           "published_at": "2026-10-06T20:15:28.745757+00:00",
           "start": 142.98,
           "youtube_video_id": "P4zHbGo9hYQ"
+        },
+        {
+          "duration": 45.02,
+          "end": 84.64,
+          "published_at": "2026-10-06T20:15:53.911263+00:00",
+          "start": 39.62,
+          "youtube_video_id": "twc0vL2Gioo"
         }
       ],
       "id": "c8774f7439d25cdacda37c89e819338e",
-      "last_processed_at": "2026-10-06T20:15:28.745774+00:00",
+      "last_processed_at": "2026-10-06T20:15:53.911277+00:00",
       "title": "Мармеладыч: Как запустить бизнес без денег? Пошаговый план от гения из Forbes",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/c8774f7439d25cdacda37c89e819338e/"
