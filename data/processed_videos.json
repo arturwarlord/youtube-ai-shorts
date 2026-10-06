@@ -115,10 +115,17 @@
           "published_at": "2026-10-06T16:05:32.924041+00:00",
           "start": 815.44,
           "youtube_video_id": "653q268ufKw"
+        },
+        {
+          "duration": 22.38,
+          "end": 1722.36,
+          "published_at": "2026-10-06T16:06:06.419956+00:00",
+          "start": 1699.98,
+          "youtube_video_id": "nHT6oXmU8bQ"
         }
       ],
       "id": "573bfc62d45607a51d412144f7d801e2",
-      "last_processed_at": "2026-10-06T16:05:32.924053+00:00",
+      "last_processed_at": "2026-10-06T16:06:06.419968+00:00",
       "title": "Эндокринолог: Хроническая усталость из-за этого! Максим Кузнецов",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/573bfc62d45607a51d412144f7d801e2/"
