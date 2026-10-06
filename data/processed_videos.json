@@ -245,10 +245,17 @@
           "published_at": "2026-10-06T01:50:39.969025+00:00",
           "start": 242.0,
           "youtube_video_id": "KvuY58vSu9k"
+        },
+        {
+          "duration": 26.72,
+          "end": 166.48,
+          "published_at": "2026-10-06T01:51:13.669087+00:00",
+          "start": 139.76,
+          "youtube_video_id": "379d58wwTPc"
         }
       ],
       "id": "c1cdf13f6b95e04456ec25956288a8f8",
-      "last_processed_at": "2026-10-06T01:50:39.969039+00:00",
+      "last_processed_at": "2026-10-06T01:51:13.669099+00:00",
       "title": "Как остановить старение? Секреты молодости и долголетия | Алипов, Вялов, Терушкин",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/c1cdf13f6b95e04456ec25956288a8f8/"
