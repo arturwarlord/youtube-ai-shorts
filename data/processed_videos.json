@@ -431,10 +431,17 @@
           "published_at": "2026-10-07T20:39:46.222774+00:00",
           "start": 216.68,
           "youtube_video_id": "iLn1lYUWxto"
+        },
+        {
+          "duration": 20.0,
+          "end": 20.0,
+          "published_at": "2026-10-07T20:40:29.788942+00:00",
+          "start": 0.0,
+          "youtube_video_id": "zDHY-lk7Wn0"
         }
       ],
       "id": "f4b91732f240df1090b0e8a7d5998494",
-      "last_processed_at": "2026-10-07T20:39:46.222788+00:00",
+      "last_processed_at": "2026-10-07T20:40:29.788957+00:00",
       "title": "Сурдин: Инопланетяне уже могли нас посетить?",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/f4b91732f240df1090b0e8a7d5998494/"
