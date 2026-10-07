@@ -31,10 +31,17 @@
           "published_at": "2026-10-07T00:27:38.024769+00:00",
           "start": 932.78,
           "youtube_video_id": "pI6wkCYsJHM"
+        },
+        {
+          "duration": 23.8,
+          "end": 436.08,
+          "published_at": "2026-10-07T00:27:56.079785+00:00",
+          "start": 412.28,
+          "youtube_video_id": "BF6DpreCU2g"
         }
       ],
       "id": "29ce0e8c0d874854cca71256356693f9",
-      "last_processed_at": "2026-10-07T00:27:38.024783+00:00",
+      "last_processed_at": "2026-10-07T00:27:56.079800+00:00",
       "title": "Что происходит с человеком перед смертью? Судмедэксперт Ольга Фатеева",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/29ce0e8c0d874854cca71256356693f9/"
