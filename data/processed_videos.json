@@ -1,5 +1,21 @@
 {
   "videos": {
+    "077a4ea1b107407af2a95c35557ae4b0": {
+      "clips": [
+        {
+          "duration": 45.82,
+          "end": 138.58,
+          "published_at": "2026-10-07T16:16:00.512980+00:00",
+          "start": 92.76,
+          "youtube_video_id": "LJSsZw0VCp8"
+        }
+      ],
+      "id": "077a4ea1b107407af2a95c35557ae4b0",
+      "last_processed_at": "2026-10-07T16:16:00.512994+00:00",
+      "title": "ИИ приведёт человечество к деградации? Нейробиолог Алипов, Михаил Никитин",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/077a4ea1b107407af2a95c35557ae4b0/"
+    },
     "0f64f23e414269ad7dc70aeb6495c95e": {
       "clips": [
         {
