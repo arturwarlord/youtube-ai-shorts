@@ -272,10 +272,17 @@
           "published_at": "2026-10-08T20:43:43.049228+00:00",
           "start": 1856.4,
           "youtube_video_id": "jNMhzykPEiI"
+        },
+        {
+          "duration": 42.68,
+          "end": 734.66,
+          "published_at": "2026-10-08T20:44:28.315781+00:00",
+          "start": 691.98,
+          "youtube_video_id": "o1NA3QzwhJ0"
         }
       ],
       "id": "9b9a1027a7c5b5cee3eebba5a3a5f9d9",
-      "last_processed_at": "2026-10-08T20:43:43.049246+00:00",
+      "last_processed_at": "2026-10-08T20:44:28.315797+00:00",
       "title": "Нас не существует? Парадоксы нашего сознания. Философ Антон Кузнецов",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/9b9a1027a7c5b5cee3eebba5a3a5f9d9/"
