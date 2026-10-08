@@ -431,10 +431,17 @@
           "published_at": "2026-10-08T00:53:26.891872+00:00",
           "start": 104.84,
           "youtube_video_id": "9Uvp_-Q1wew"
+        },
+        {
+          "duration": 23.7,
+          "end": 69.02,
+          "published_at": "2026-10-08T00:53:58.658643+00:00",
+          "start": 45.32,
+          "youtube_video_id": "gIMcTjLITug"
         }
       ],
       "id": "ef6fcd79ad7b7a91a6ee19d731a32c3d",
-      "last_processed_at": "2026-10-08T00:53:26.891884+00:00",
+      "last_processed_at": "2026-10-08T00:53:58.658657+00:00",
       "title": "Человечество на пороге новой пандемии? Вот, что ждет нас в 2030 году | Михаил Гельфанд",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/ef6fcd79ad7b7a91a6ee19d731a32c3d/"
