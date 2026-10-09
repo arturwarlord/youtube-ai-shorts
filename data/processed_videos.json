@@ -88,6 +88,22 @@
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/39b3f0ef5d125ee97767cf72ba830de3/"
     },
+    "44ca2dd77e61a15657bd000ccece780a": {
+      "clips": [
+        {
+          "duration": 60.0,
+          "end": 2213.25,
+          "published_at": "2026-10-09T01:11:56.233408+00:00",
+          "start": 2153.25,
+          "youtube_video_id": "-ySPhLw_bhA"
+        }
+      ],
+      "id": "44ca2dd77e61a15657bd000ccece780a",
+      "last_processed_at": "2026-10-09T01:11:56.233421+00:00",
+      "title": "Что передается от матери, а что — от отца? Нейробиолог и генетик про наследственность",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/44ca2dd77e61a15657bd000ccece780a/"
+    },
     "48866ea67c8278f327efa78f80d57168": {
       "clips": [
         {
