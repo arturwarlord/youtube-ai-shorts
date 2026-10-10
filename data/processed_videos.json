@@ -241,6 +241,22 @@
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/73f095a2c85ff21c9daa7166633602ac/"
     },
+    "7699311ff12ed92852d3d740133c3231": {
+      "clips": [
+        {
+          "duration": 21.08,
+          "end": 922.9,
+          "published_at": "2026-10-10T15:08:22.189763+00:00",
+          "start": 901.82,
+          "youtube_video_id": "kYtK40FHNHs"
+        }
+      ],
+      "id": "7699311ff12ed92852d3d740133c3231",
+      "last_processed_at": "2026-10-10T15:08:22.189777+00:00",
+      "title": "Человек — не единственный разумный вид? Михаил Никитин",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/7699311ff12ed92852d3d740133c3231/"
+    },
     "95d62c71f0fefda90b31fcf73362cbfe": {
       "clips": [
         {
