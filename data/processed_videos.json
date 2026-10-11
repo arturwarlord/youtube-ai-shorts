@@ -207,10 +207,17 @@
           "published_at": "2026-10-11T15:35:40.860511+00:00",
           "start": 438.46,
           "youtube_video_id": "gD5IFwP7CEw"
+        },
+        {
+          "duration": 39.24,
+          "end": 1245.14,
+          "published_at": "2026-10-11T15:36:22.115609+00:00",
+          "start": 1205.9,
+          "youtube_video_id": "9YQ6gbj5jxc"
         }
       ],
       "id": "57b8e9ff50aaec088e6af8a53f010735",
-      "last_processed_at": "2026-10-11T15:35:40.860523+00:00",
+      "last_processed_at": "2026-10-11T15:36:22.115622+00:00",
       "title": "АЙДЕН — Почему твой бизнес ОБРЕЧЕН на ПРОВАЛ | 10 ошибок, которые делают ВСЕ",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/57b8e9ff50aaec088e6af8a53f010735/"
