@@ -295,10 +295,17 @@
           "published_at": "2026-10-12T18:32:02.760969+00:00",
           "start": 1585.2,
           "youtube_video_id": "DUdIxO5Hkrg"
+        },
+        {
+          "duration": 25.78,
+          "end": 128.06,
+          "published_at": "2026-10-12T18:32:27.763217+00:00",
+          "start": 102.28,
+          "youtube_video_id": "iPy7q6UHRhQ"
         }
       ],
       "id": "66680af7e8b84dc7a054f8c455009de0",
-      "last_processed_at": "2026-10-12T18:32:02.760982+00:00",
+      "last_processed_at": "2026-10-12T18:32:27.763229+00:00",
       "title": "Эти продукты опасны для каждого! Кардиохирург №1 про здоровье сердца",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/66680af7e8b84dc7a054f8c455009de0/"
