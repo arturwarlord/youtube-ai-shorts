@@ -138,10 +138,17 @@
           "published_at": "2026-10-12T00:21:50.123985+00:00",
           "start": 100.18,
           "youtube_video_id": "9L8BXic325Q"
+        },
+        {
+          "duration": 39.74,
+          "end": 574.02,
+          "published_at": "2026-10-12T00:22:24.358400+00:00",
+          "start": 534.28,
+          "youtube_video_id": "6zLQKPzh5IE"
         }
       ],
       "id": "48d40a772dbabdf7244adb1a64ba0e12",
-      "last_processed_at": "2026-10-12T00:21:50.123998+00:00",
+      "last_processed_at": "2026-10-12T00:22:24.358412+00:00",
       "title": "Астрофизик: Человечество заперто в Солнечной системе! Борис Штерн",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/48d40a772dbabdf7244adb1a64ba0e12/"
