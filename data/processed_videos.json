@@ -134,6 +134,22 @@
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/44ca2dd77e61a15657bd000ccece780a/"
     },
+    "46b93c5cb4c7072f9c265c909c860f22": {
+      "clips": [
+        {
+          "duration": 60.0,
+          "end": 1217.38,
+          "published_at": "2026-10-14T23:50:43.451887+00:00",
+          "start": 1157.38,
+          "youtube_video_id": "GkPVqSOdlFs"
+        }
+      ],
+      "id": "46b93c5cb4c7072f9c265c909c860f22",
+      "last_processed_at": "2026-10-14T23:50:43.451900+00:00",
+      "title": "Телефонные мошенники. Документальный фильм",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/46b93c5cb4c7072f9c265c909c860f22/"
+    },
     "48866ea67c8278f327efa78f80d57168": {
       "clips": [
         {
