@@ -291,6 +291,22 @@
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/57b8e9ff50aaec088e6af8a53f010735/"
     },
+    "57dd4489508af3f6c34a0d57bcb895d9": {
+      "clips": [
+        {
+          "duration": 24.74,
+          "end": 812.4,
+          "published_at": "2026-10-15T14:15:25.422710+00:00",
+          "start": 787.66,
+          "youtube_video_id": "8EK6s-4e6SA"
+        }
+      ],
+      "id": "57dd4489508af3f6c34a0d57bcb895d9",
+      "last_processed_at": "2026-10-15T14:15:25.422723+00:00",
+      "title": "Лудомания — чума XXI века. Документальный фильм.",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/57dd4489508af3f6c34a0d57bcb895d9/"
+    },
     "5904989336a1002f49b3937eb54e8bb2": {
       "clips": [
         {
