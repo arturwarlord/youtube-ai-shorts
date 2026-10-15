@@ -410,10 +410,17 @@
           "published_at": "2026-10-15T23:46:56.170027+00:00",
           "start": 1753.55,
           "youtube_video_id": "4g4mOdamKmI"
+        },
+        {
+          "duration": 36.88,
+          "end": 81.16,
+          "published_at": "2026-10-15T23:48:01.302216+00:00",
+          "start": 44.28,
+          "youtube_video_id": "wsVNDCssVeM"
         }
       ],
       "id": "757e8bec460acae2e29a8ea3582b901c",
-      "last_processed_at": "2026-10-15T23:46:56.170041+00:00",
+      "last_processed_at": "2026-10-15T23:48:01.302231+00:00",
       "title": "Были ли американцы на луне? Астроном Владимир Сурдин",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/757e8bec460acae2e29a8ea3582b901c/"
