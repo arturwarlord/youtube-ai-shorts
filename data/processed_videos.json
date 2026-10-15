@@ -456,10 +456,17 @@
           "published_at": "2026-10-15T19:19:08.921040+00:00",
           "start": 2776.26,
           "youtube_video_id": "-DsM0Uo-8pg"
+        },
+        {
+          "duration": 39.92,
+          "end": 505.66,
+          "published_at": "2026-10-15T19:19:58.576420+00:00",
+          "start": 465.74,
+          "youtube_video_id": "q19ha5110PM"
         }
       ],
       "id": "9308d88e712c577eae061b0abcf7877a",
-      "last_processed_at": "2026-10-15T19:19:08.921051+00:00",
+      "last_processed_at": "2026-10-15T19:19:58.576431+00:00",
       "title": "Frame Tamer: КАК ВЫРВАТЬСЯ ИЗ НИЩЕТЫ?",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/9308d88e712c577eae061b0abcf7877a/"
