@@ -728,10 +728,17 @@
           "published_at": "2026-10-16T13:52:18.389445+00:00",
           "start": 570.56,
           "youtube_video_id": "hBbaTT1y7fA"
+        },
+        {
+          "duration": 39.32,
+          "end": 172.38,
+          "published_at": "2026-10-16T13:52:58.033239+00:00",
+          "start": 133.06,
+          "youtube_video_id": "NNarVLQGMPM"
         }
       ],
       "id": "d403329891c6b67dc9e68cc0f47d3188",
-      "last_processed_at": "2026-10-16T13:52:18.389457+00:00",
+      "last_processed_at": "2026-10-16T13:52:58.033252+00:00",
       "title": "Всё, что вы знали про АЛКОГОЛЬ - ЛОЖЬ! Откровения ПСИХИАТРА-НАРКОЛОГА",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/d403329891c6b67dc9e68cc0f47d3188/"
