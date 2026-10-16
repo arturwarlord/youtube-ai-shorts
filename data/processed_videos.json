@@ -541,10 +541,17 @@
           "published_at": "2026-10-16T23:26:15.705501+00:00",
           "start": 1506.06,
           "youtube_video_id": "wP7i0SL3eIE"
+        },
+        {
+          "duration": 36.42,
+          "end": 225.18,
+          "published_at": "2026-10-16T23:26:58.238599+00:00",
+          "start": 188.76,
+          "youtube_video_id": "mMmwY1-cTBk"
         }
       ],
       "id": "96987b56ab397e00835c20345c91520c",
-      "last_processed_at": "2026-10-16T23:26:15.705513+00:00",
+      "last_processed_at": "2026-10-16T23:26:58.238611+00:00",
       "title": "Как навсегда исправить зрение? Офтальмолог №1 про упражнения, операции и БАДы",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/96987b56ab397e00835c20345c91520c/"
