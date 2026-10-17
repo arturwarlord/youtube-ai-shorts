@@ -333,6 +333,22 @@
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/5904989336a1002f49b3937eb54e8bb2/"
     },
+    "59cb92c8592122338985ae3f15637c63": {
+      "clips": [
+        {
+          "duration": 20.0,
+          "end": 1341.72,
+          "published_at": "2026-10-17T18:08:08.238245+00:00",
+          "start": 1321.72,
+          "youtube_video_id": "MfdxtKnE0ac"
+        }
+      ],
+      "id": "59cb92c8592122338985ae3f15637c63",
+      "last_processed_at": "2026-10-17T18:08:08.238259+00:00",
+      "title": "Почему ты всегда уставший? 5 причин низкой продуктивности | Бузунов, Ковальзон",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/59cb92c8592122338985ae3f15637c63/"
+    },
     "5e411859ba6109dc3d597083a9744ef3": {
       "clips": [
         {
