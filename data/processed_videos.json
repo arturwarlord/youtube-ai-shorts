@@ -790,10 +790,17 @@
           "published_at": "2026-10-17T23:07:35.187700+00:00",
           "start": 39.04,
           "youtube_video_id": "WFN3JIrLl3M"
+        },
+        {
+          "duration": 46.96,
+          "end": 341.58,
+          "published_at": "2026-10-17T23:08:18.503352+00:00",
+          "start": 294.62,
+          "youtube_video_id": "riVal4uj-2U"
         }
       ],
       "id": "ca66ef018d200b9374c6fe28d1a9ddb7",
-      "last_processed_at": "2026-10-17T23:07:35.187712+00:00",
+      "last_processed_at": "2026-10-17T23:08:18.503365+00:00",
       "title": "Нейробиолог №1: про РАЗДВОЕНИЕ ЛИЧНОСТИ! При участии Сатира.",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/ca66ef018d200b9374c6fe28d1a9ddb7/"
