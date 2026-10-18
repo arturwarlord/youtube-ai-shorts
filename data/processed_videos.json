@@ -123,10 +123,17 @@
           "published_at": "2026-10-18T18:06:33.155611+00:00",
           "start": 61.34,
           "youtube_video_id": "_XQYdAMK2LA"
+        },
+        {
+          "duration": 20.0,
+          "end": 1672.84,
+          "published_at": "2026-10-18T18:06:53.458722+00:00",
+          "start": 1652.84,
+          "youtube_video_id": "djAuaO7HE4E"
         }
       ],
       "id": "36dfcb2605ef3c244b4980f576fdc054",
-      "last_processed_at": "2026-10-18T18:06:33.155623+00:00",
+      "last_processed_at": "2026-10-18T18:06:53.458734+00:00",
       "title": "Потом будет поздно! 10 правил от Биохакера №1 Вадима Каспарова",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/36dfcb2605ef3c244b4980f576fdc054/"
