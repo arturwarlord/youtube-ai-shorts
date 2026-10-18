@@ -1,5 +1,21 @@
 {
   "videos": {
+    "00275eaf3c543ae8b5217a1e6ec92e23": {
+      "clips": [
+        {
+          "duration": 60.0,
+          "end": 687.42,
+          "published_at": "2026-10-18T13:09:27.343990+00:00",
+          "start": 627.42,
+          "youtube_video_id": "NXLMy-NfcGw"
+        }
+      ],
+      "id": "00275eaf3c543ae8b5217a1e6ec92e23",
+      "last_processed_at": "2026-10-18T13:09:27.344002+00:00",
+      "title": "Времени НЕ СУЩЕСТВУЕТ... Кротовые норы и квантовая запутанность. Алексей Семихатов",
+      "upload_date": "",
+      "webpage_url": "https://rutube.ru/video/00275eaf3c543ae8b5217a1e6ec92e23/"
+    },
     "077a4ea1b107407af2a95c35557ae4b0": {
       "clips": [
         {
