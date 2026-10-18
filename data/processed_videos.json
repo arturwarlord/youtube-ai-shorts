@@ -790,10 +790,17 @@
           "published_at": "2026-10-18T23:04:13.345444+00:00",
           "start": 941.26,
           "youtube_video_id": "8PqymYBiIEo"
+        },
+        {
+          "duration": 44.84,
+          "end": 88.24,
+          "published_at": "2026-10-18T23:05:19.950090+00:00",
+          "start": 43.4,
+          "youtube_video_id": "v71LS1MmRAM"
         }
       ],
       "id": "b258fd32417870e97b5770dfaeb66375",
-      "last_processed_at": "2026-10-18T23:04:13.345459+00:00",
+      "last_processed_at": "2026-10-18T23:05:19.950105+00:00",
       "title": "Почему одним всё ЛЕГКО, а другим приходится ПАХАТЬ? | Генетик Константин Северинов",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/b258fd32417870e97b5770dfaeb66375/"
