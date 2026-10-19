@@ -449,10 +449,17 @@
           "published_at": "2026-10-19T20:49:36.047698+00:00",
           "start": 3423.55,
           "youtube_video_id": "G4n4tggBzXQ"
+        },
+        {
+          "duration": 43.16,
+          "end": 179.24,
+          "published_at": "2026-10-19T20:50:20.769094+00:00",
+          "start": 136.08,
+          "youtube_video_id": "0cPkV_A-1r0"
         }
       ],
       "id": "646d76826412cd89e628ce9ce52b6059",
-      "last_processed_at": "2026-10-19T20:49:36.047710+00:00",
+      "last_processed_at": "2026-10-19T20:50:20.769108+00:00",
       "title": "ПОЧЕМУ ТЕБЯ НЕ УВАЖАЮТ? 10 правил мужчины | Эд Халилов",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/646d76826412cd89e628ce9ce52b6059/"
