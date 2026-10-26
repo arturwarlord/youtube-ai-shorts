@@ -928,10 +928,17 @@
           "published_at": "2026-10-26T20:37:11.652007+00:00",
           "start": 1948.64,
           "youtube_video_id": "LZkoHb9Ckck"
+        },
+        {
+          "duration": 25.26,
+          "end": 1162.92,
+          "published_at": "2026-10-26T20:37:47.387493+00:00",
+          "start": 1137.66,
+          "youtube_video_id": "cMuUhoPlDbw"
         }
       ],
       "id": "d52791067d342883a63a7e5876fbba4d",
-      "last_processed_at": "2026-10-26T20:37:11.652021+00:00",
+      "last_processed_at": "2026-10-26T20:37:47.387513+00:00",
       "title": "Что будет, если вы съедите хлеб с плесенью? — Биолог МГУ Михаил Вишневский",
       "upload_date": "",
       "webpage_url": "https://rutube.ru/video/d52791067d342883a63a7e5876fbba4d/"
